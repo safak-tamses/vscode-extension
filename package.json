@@ -1,0 +1,157 @@
+{
+  "name": "code-health-assistant",
+  "displayName": "Akıllı Kod Sağlığı Asistanı",
+  "description": "SonarQube Enterprise bulgularını VS Code içinde gösterir, GitHub Copilot ile çözüm önerir; her değişiklik diff + gerekçe ile onaya sunulur (otomatik merge yok).",
+  "version": "0.1.0",
+  "publisher": "code-health",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:codeHealthFindings"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeHealth",
+          "title": "Kod Sağlığı",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeHealth": [
+        {
+          "id": "codeHealthFindings",
+          "name": "Bulgular"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "code-health.configure",
+        "title": "Kod Sağlığı: Bağlantıyı Yapılandır",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "code-health.refresh",
+        "title": "Kod Sağlığı: Bulguları Tara",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "code-health.openFinding",
+        "title": "Kod Sağlığı: Bulguyu Aç"
+      },
+      {
+        "command": "code-health.fix",
+        "title": "Kod Sağlığı: Çöz",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "code-health.fixAll",
+        "title": "Kod Sağlığı: Tümünü Çöz"
+      },
+      {
+        "command": "code-health.clearToken",
+        "title": "Kod Sağlığı: Kayıtlı Token'ı Sil"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "code-health.refresh",
+          "when": "view == codeHealthFindings",
+          "group": "navigation@1"
+        },
+        {
+          "command": "code-health.configure",
+          "when": "view == codeHealthFindings",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "code-health.fix",
+          "when": "view == codeHealthFindings && viewItem == issue",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Akıllı Kod Sağlığı Asistanı",
+      "properties": {
+        "codeHealth.sonarUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "SonarQube Enterprise sunucu adresi (ör. `https://sonar.kurum-ici.local`). Token bu ayarda **tutulmaz**; token VS Code SecretStorage'da saklanır."
+        },
+        "codeHealth.projectKey": {
+          "type": "string",
+          "default": "",
+          "description": "SonarQube proje anahtarı (project key)."
+        },
+        "codeHealth.branch": {
+          "type": "string",
+          "default": "",
+          "description": "Taranacak branch (boşsa ana branch)."
+        },
+        "codeHealth.authScheme": {
+          "type": "string",
+          "enum": [
+            "bearer",
+            "basic"
+          ],
+          "default": "bearer",
+          "description": "SonarQube kimlik doğrulama şeması. SonarQube 10.x+ için 'bearer', eski sürümler için 'basic'."
+        },
+        "codeHealth.auditLogPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Denetim kaydı (audit log) yolu. Boşsa `<workspace>/.code-health/audit.log` kullanılır. Merkezi/ağ yolu verilebilir (SIEM beslemesi)."
+        },
+        "codeHealth.snippetPadding": {
+          "type": "number",
+          "default": 8,
+          "description": "Fix bağlamı için bulgu çevresinde alınacak satır sayısı."
+        },
+        "codeHealth.copilotVendor": {
+          "type": "string",
+          "default": "copilot",
+          "description": "Language Model API için model sağlayıcısı (vscode.lm vendor)."
+        },
+        "codeHealth.maxIssues": {
+          "type": "number",
+          "default": 500,
+          "description": "Tek taramada çekilecek azami bulgu sayısı."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p tsconfig.json --noEmit && tsc -p src/ui/webview/tsconfig.json --noEmit && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "lint": "eslint src --ext ts",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.23.0",
+    "eslint": "^8.57.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}

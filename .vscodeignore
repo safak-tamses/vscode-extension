@@ -1,0 +1,17 @@
+.vscode/**
+.claude/**
+.git/**
+.gitignore
+docs/**
+src/**
+test/**
+node_modules/**
+**/*.ts
+**/*.map
+**/tsconfig*.json
+esbuild.mjs
+.eslintrc.json
+.mcp.json
+Claude-Code-Uygulama-Plani.md
+.code-health/**
+**/.DS_Store

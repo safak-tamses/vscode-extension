@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": ["Read", "Edit", "Bash(npm run *)", "Bash(git *)"],
+    "deny": ["Bash(rm -rf *)", "Bash(curl *)", "Bash(npm publish *)"]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "command": "npm run lint --silent && npm run compile --silent"
+      }
+    ]
+  }
+}
