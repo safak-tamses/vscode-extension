@@ -6,6 +6,10 @@
   "publisher": "code-health",
   "license": "UNLICENSED",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://example.local/code-health-assistant.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },

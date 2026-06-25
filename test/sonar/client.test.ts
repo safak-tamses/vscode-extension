@@ -186,6 +186,21 @@ test('searchHotspots parses paging object', async () => {
   assert.equal(page.items[0]?.securityCategory, 'sql-injection');
 });
 
+test('findIssue queries by issue key and returns the issue or undefined', async () => {
+  const http = new FakeHttp([
+    { status: 200, body: issueBody(['ISSUE-9']) },
+    { status: 200, body: issueBody([], 0) }
+  ]);
+  const client = new SonarClient(http, async () => 'T', cfg);
+
+  const found = await client.findIssue('ISSUE-9');
+  assert.equal(found?.key, 'ISSUE-9');
+  assert.equal(http.calls[0]?.url, 'https://sonar.local/api/issues/search?issues=ISSUE-9&ps=1&p=1');
+
+  const missing = await client.findIssue('NOPE');
+  assert.equal(missing, undefined);
+});
+
 test('normalizes baseUrl trailing slash', async () => {
   const http = new FakeHttp([{ status: 200, body: issueBody([], 0) }]);
   const client = new SonarClient(http, async () => 'T', { ...cfg, baseUrl: 'https://sonar.local/' });

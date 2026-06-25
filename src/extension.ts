@@ -132,6 +132,29 @@ export function activate(context: vscode.ExtensionContext): void {
     return buildFixContext(issue, ruleDescription, doc.getText(), store.getSettings().snippetPadding);
   };
 
+  const rescanAfterFix = async (issue: SonarIssue): Promise<void> => {
+    await audit.record({
+      type: 'rescan',
+      ruleKey: issue.rule,
+      issueKey: issue.key,
+      file: componentToPath(issue.component)
+    });
+    let stillOpen = true;
+    try {
+      const found = await makeClient().findIssue(issue.key);
+      stillOpen = Boolean(found && found.status !== 'CLOSED' && found.status !== 'RESOLVED');
+    } catch {
+      // Doğrulama sorgusu başarısızsa iyimser davran; yerel değişiklik uygulandı.
+    }
+    currentIssues = currentIssues.filter((i) => i.key !== issue.key);
+    tree.setFindings(groupFindings(currentIssues));
+    void vscode.window.showInformationMessage(
+      stillOpen
+        ? 'Fix uygulandı ve listeden çıkarıldı. SonarQube tarafında kesin kapanış, sunucuda yeni analiz sonrası görünür.'
+        : 'Fix uygulandı; SonarQube bulguyu kapanmış olarak raporladı.'
+    );
+  };
+
   const runFix = async (issue: SonarIssue): Promise<void> => {
     DetailPanel.postBusy(true);
     try {
@@ -164,6 +187,7 @@ export function activate(context: vscode.ExtensionContext): void {
       });
       if (outcome === 'applied') {
         DetailPanel.postOutcome('applied');
+        await rescanAfterFix(issue);
       } else if (outcome === 'rejected') {
         DetailPanel.postOutcome('rejected');
       } else if (outcome === 'noop') {
@@ -212,7 +236,7 @@ export function activate(context: vscode.ExtensionContext): void {
               continue;
             }
             const proposal = await orchestrator.propose(issue, ctx);
-            await previewAndDecide(proposal, {
+            const outcome = await previewAndDecide(proposal, {
               resolveUri: resolveFileUri,
               provider: previewProvider,
               onAccept: () =>
@@ -220,6 +244,9 @@ export function activate(context: vscode.ExtensionContext): void {
               onReject: () =>
                 audit.record({ type: 'reject', ruleKey: issue.rule, issueKey: issue.key, file: proposal.filePath })
             });
+            if (outcome === 'applied') {
+              await rescanAfterFix(issue);
+            }
           } catch (err) {
             if (err instanceof CopilotUnavailableError) {
               void vscode.window.showWarningMessage('Copilot erişimi kesildi; toplu çözüm durduruldu.');

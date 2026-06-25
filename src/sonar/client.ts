@@ -90,6 +90,13 @@ export class SonarClient {
     return all.slice(0, cap);
   }
 
+  /** Tek bir bulguyu anahtarına göre sorgular (fix sonrası durum doğrulaması için). */
+  async findIssue(key: string): Promise<SonarIssue | undefined> {
+    const url = `${this.baseUrl}/api/issues/search?issues=${encodeURIComponent(key)}&ps=1&p=1`;
+    const json = this.parse<IssuesSearchResponse>(await this.request(url));
+    return json.issues?.[0];
+  }
+
   async showRule(key: string): Promise<SonarRule> {
     const url = `${this.baseUrl}/api/rules/show?key=${encodeURIComponent(key)}`;
     const json = this.parse<RuleShowResponse>(await this.request(url));

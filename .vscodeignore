@@ -2,6 +2,7 @@
 .claude/**
 .git/**
 .gitignore
+CLAUDE.md
 docs/**
 src/**
 test/**
