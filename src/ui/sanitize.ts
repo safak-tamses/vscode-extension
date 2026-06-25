@@ -15,3 +15,16 @@ export function sanitizeHtml(html: string): string {
   out = out.replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '$1=$2#$2');
   return out;
 }
+
+/** HTML'i düz metne çevirir (LLM istemi için). Etiketleri ve script içeriğini kaldırır. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}

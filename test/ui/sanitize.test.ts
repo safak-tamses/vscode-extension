@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeHtml } from '../../src/ui/sanitize';
+import { sanitizeHtml, htmlToText } from '../../src/ui/sanitize';
 
 test('removes script blocks with their content', () => {
   const out = sanitizeHtml('<p>ok</p><script>alert(1)</script>');
@@ -30,4 +30,14 @@ test('keeps safe formatting markup intact', () => {
 
 test('handles empty/non-string-ish input gracefully', () => {
   assert.equal(sanitizeHtml(''), '');
+});
+
+test('htmlToText strips tags and collapses whitespace', () => {
+  const out = htmlToText('<h2>Why</h2>\n<p>Use <code>try</code>  it.</p>');
+  assert.equal(out, 'Why Use try it.');
+});
+
+test('htmlToText removes script content entirely', () => {
+  const out = htmlToText('<p>ok</p><script>alert(1)</script>');
+  assert.equal(out, 'ok');
 });
