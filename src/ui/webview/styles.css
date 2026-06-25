@@ -1,5 +1,12 @@
 :root {
   color-scheme: light dark;
+  --ch-gap: 12px;
+  --ch-radius: 6px;
+  --ch-border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -7,6 +14,265 @@ body {
   font-size: var(--vscode-font-size);
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
-  padding: 0;
   margin: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 22px 32px;
+}
+
+/* ---- Header ---- */
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+
+.header .subtitle {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85rem;
+}
+
+/* ---- Card ---- */
+.card {
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius);
+  padding: 16px 18px;
+  margin-bottom: var(--ch-gap);
+}
+
+.card h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+/* ---- Form ---- */
+.field {
+  margin-bottom: 14px;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.field label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.field .hint {
+  display: block;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.78rem;
+  margin-top: 4px;
+}
+
+input[type='text'],
+input[type='password'],
+select {
+  width: 100%;
+  padding: 6px 9px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--ch-border));
+  border-radius: 4px;
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+/* ---- Buttons ---- */
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+button {
+  font-family: inherit;
+  font-size: 0.88rem;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button.secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* ---- Status banner ---- */
+.status {
+  display: none;
+  margin-top: 14px;
+  padding: 9px 12px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  border: 1px solid transparent;
+}
+
+.status.show {
+  display: block;
+}
+
+.status.ok {
+  color: var(--vscode-testing-iconPassed, #3fb950);
+  border-color: var(--vscode-testing-iconPassed, #3fb950);
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed, #3fb950) 12%, transparent);
+}
+
+.status.error {
+  color: var(--vscode-errorForeground, #f85149);
+  border-color: var(--vscode-errorForeground, #f85149);
+  background: color-mix(in srgb, var(--vscode-errorForeground, #f85149) 12%, transparent);
+}
+
+.status.info {
+  color: var(--vscode-foreground);
+  border-color: var(--ch-border);
+  background: var(--vscode-textBlockQuote-background, transparent);
+}
+
+/* ---- Badges (severity / type) ---- */
+.badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 6px 0 2px;
+}
+
+.badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+}
+
+.badge.sev-BLOCKER,
+.badge.sev-CRITICAL {
+  color: var(--vscode-errorForeground, #f85149);
+}
+
+.badge.sev-MAJOR {
+  color: var(--vscode-editorWarning-foreground, #d29922);
+}
+
+.badge.sev-MINOR,
+.badge.sev-INFO {
+  color: var(--vscode-charts-blue, #539bf5);
+}
+
+.badge.type {
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ---- Detail description ---- */
+.meta {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.82rem;
+  margin-bottom: 10px;
+}
+
+.message {
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin: 4px 0 14px;
+}
+
+.description {
+  font-size: 0.88rem;
+  border-top: 1px solid var(--ch-border);
+  padding-top: 12px;
+}
+
+.description pre,
+.description code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.15));
+  border-radius: 4px;
+}
+
+.description pre {
+  padding: 10px;
+  overflow-x: auto;
+}
+
+.description code {
+  padding: 1px 4px;
+}
+
+.description h2,
+.description h3 {
+  font-size: 0.92rem;
+}
+
+.location {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.82rem;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  margin-bottom: 8px;
+  display: inline-block;
+}
+
+.spinner {
+  display: none;
+  font-size: 0.82rem;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 8px;
+}
+
+.spinner.show {
+  display: block;
 }
