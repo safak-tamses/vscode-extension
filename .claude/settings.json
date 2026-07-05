@@ -7,7 +7,12 @@
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
-        "command": "npm run lint --silent && npm run compile --silent"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm run lint --silent && npm run compile --silent"
+          }
+        ]
       }
     ]
   }
