@@ -8,6 +8,17 @@ export interface ConfigFormState {
   authScheme: 'bearer' | 'basic';
 }
 
+/** Aktif model sağlayıcının kullanıcıya gösterilen durumu. */
+export interface ProviderStatus {
+  id: 'copilot' | 'local';
+  /** Ör. "GitHub Copilot" veya "Local LLM · qwen2.5-coder". */
+  label: string;
+  /** Şu anda çözüm üretebilir mi? */
+  available: boolean;
+  /** Erişilemiyorsa kullanıcıya gösterilecek yönlendirme. */
+  hint?: string;
+}
+
 /** Detay panelinde gösterilen, webview'a güvenli biçimde aktarılan bulgu görünümü. */
 export interface FindingView {
   issueKey: string;
@@ -20,7 +31,7 @@ export interface FindingView {
   descriptionHtml: string;
   filePath: string;
   line?: number;
-  copilotAvailable: boolean;
+  provider: ProviderStatus;
 }
 
 // ---- Config paneli mesajları ----

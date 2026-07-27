@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ConfigStore } from '../src/config';
 import type { CodeHealthSettings, SettingsStore } from '../src/config';
 import type { SecretReader } from '../src/audit/secrets';
-import { SONAR_TOKEN_KEY } from '../src/audit/secrets';
+import { LOCAL_LLM_KEY, SONAR_TOKEN_KEY } from '../src/audit/secrets';
 
 function defaults(): CodeHealthSettings {
   return {
@@ -11,10 +11,22 @@ function defaults(): CodeHealthSettings {
     projectKey: '',
     branch: '',
     authScheme: 'bearer',
+    maxIssues: 500,
     auditLogPath: '',
     snippetPadding: 8,
+    rulesDir: '.code-health/rules',
+    llmProvider: 'copilot',
     copilotVendor: 'copilot',
-    maxIssues: 500
+    copilotFamily: '',
+    localProtocol: 'openai',
+    localBaseUrl: '',
+    localModel: '',
+    localTemperature: 0.1,
+    localMaxOutputTokens: 4096,
+    localTimeoutSec: 120,
+    localExtraHeaders: {},
+    testGenMaxRepairAttempts: 1,
+    testGenMaxContextChars: 60000
   };
 }
 
@@ -41,28 +53,28 @@ class FakeSecrets implements SecretReader {
   }
 }
 
-test('isComplete is false when token missing even if url+key set', async () => {
+test('isSonarComplete is false when token missing even if url+key set', async () => {
   const settings = new FakeSettings({ ...defaults(), sonarUrl: 'https://s.local', projectKey: 'p' });
   const store = new ConfigStore(settings, new FakeSecrets());
 
-  assert.equal(await store.isComplete(), false);
+  assert.equal(await store.isSonarComplete(), false);
 });
 
-test('isComplete is false when url or projectKey empty', async () => {
+test('isSonarComplete is false when url or projectKey empty', async () => {
   const secrets = new FakeSecrets();
   await secrets.store(SONAR_TOKEN_KEY, 'T');
   const store = new ConfigStore(new FakeSettings({ ...defaults(), sonarUrl: 'https://s.local' }), secrets);
 
-  assert.equal(await store.isComplete(), false); // projectKey empty
+  assert.equal(await store.isSonarComplete(), false); // projectKey empty
 });
 
-test('isComplete is true when url + projectKey + token present', async () => {
+test('isSonarComplete is true when url + projectKey + token present', async () => {
   const secrets = new FakeSecrets();
   await secrets.store(SONAR_TOKEN_KEY, 'T');
   const settings = new FakeSettings({ ...defaults(), sonarUrl: 'https://s.local', projectKey: 'p' });
   const store = new ConfigStore(settings, secrets);
 
-  assert.equal(await store.isComplete(), true);
+  assert.equal(await store.isSonarComplete(), true);
 });
 
 test('saveSettings persists non-secret settings and never touches secrets', async () => {
@@ -90,6 +102,23 @@ test('setToken/getToken/clearToken go through SecretStorage only', async () => {
   assert.equal(await store.getToken(), undefined);
 });
 
+test('local LLM api key is stored under its own SecretStorage key only', async () => {
+  const secrets = new FakeSecrets();
+  const settings = new FakeSettings();
+  const store = new ConfigStore(settings, secrets);
+
+  await store.setLocalApiKey('LLM-KEY');
+
+  assert.equal(secrets.map.get(LOCAL_LLM_KEY), 'LLM-KEY');
+  assert.equal(await store.getLocalApiKey(), 'LLM-KEY');
+  assert.equal(await store.getToken(), undefined); // sonar token'ı ile karışmaz
+  // anahtar hiçbir ayara sızmaz
+  assert.ok(!JSON.stringify(settings.values).includes('LLM-KEY'));
+
+  await store.clearLocalApiKey();
+  assert.equal(await store.getLocalApiKey(), undefined);
+});
+
 test('getSonarConfig maps settings to typed SonarConfig', async () => {
   const settings = new FakeSettings({
     ...defaults(),
@@ -108,4 +137,51 @@ test('getSonarConfig maps settings to typed SonarConfig', async () => {
     branch: 'dev',
     authScheme: 'basic'
   });
+});
+
+test('getLlmSettings maps flat settings into the provider shape', () => {
+  const settings = new FakeSettings({
+    ...defaults(),
+    llmProvider: 'local',
+    copilotVendor: 'copilot',
+    copilotFamily: 'gpt-4o',
+    localProtocol: 'ollama',
+    localBaseUrl: 'http://localhost:11434',
+    localModel: 'qwen2.5-coder:32b',
+    localExtraHeaders: { 'X-Gateway': 'kurum' }
+  });
+  const store = new ConfigStore(settings, new FakeSecrets());
+
+  const llm = store.getLlmSettings();
+
+  assert.equal(llm.provider, 'local');
+  assert.deepEqual(llm.copilot, { vendor: 'copilot', family: 'gpt-4o' });
+  assert.equal(llm.local.protocol, 'ollama');
+  assert.equal(llm.local.baseUrl, 'http://localhost:11434');
+  assert.equal(llm.local.model, 'qwen2.5-coder:32b');
+  assert.deepEqual(llm.local.extraHeaders, { 'X-Gateway': 'kurum' });
+});
+
+test('isLlmComplete gates on local fields but not on copilot', () => {
+  const copilot = new ConfigStore(new FakeSettings(), new FakeSecrets());
+  assert.equal(copilot.isLlmComplete(), true);
+
+  const half = new ConfigStore(
+    new FakeSettings({ ...defaults(), llmProvider: 'local', localBaseUrl: 'http://llm.local/v1' }),
+    new FakeSecrets()
+  );
+  assert.equal(half.isLlmComplete(), false);
+  assert.deepEqual(half.describeLlm().missing, ['Model adı']);
+
+  const full = new ConfigStore(
+    new FakeSettings({
+      ...defaults(),
+      llmProvider: 'local',
+      localBaseUrl: 'http://llm.local/v1',
+      localModel: 'qwen'
+    }),
+    new FakeSecrets()
+  );
+  assert.equal(full.isLlmComplete(), true);
+  assert.equal(full.describeLlm().label, 'Local LLM · qwen');
 });

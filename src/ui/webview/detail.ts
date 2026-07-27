@@ -70,21 +70,23 @@ function render(view: FindingView): void {
   // Actions
   const actions = el('div', { class: 'actions' });
   const fixBtn = el('button', { class: 'primary' });
-  fixBtn.textContent = view.copilotAvailable ? 'Çöz (Copilot)' : 'Çöz';
+  fixBtn.textContent = `Çöz (${view.provider.label})`;
   fixBtn.addEventListener('click', () => vscode.postMessage({ type: 'fix' }));
   const fixAllBtn = el('button', { class: 'secondary' });
   fixAllBtn.textContent = 'Tümünü Çöz';
   fixAllBtn.addEventListener('click', () => vscode.postMessage({ type: 'fixAll' }));
   actions.append(fixBtn, fixAllBtn);
 
-  if (!view.copilotAvailable) {
+  if (!view.provider.available) {
     const note = el('div', { class: 'status show info' });
-    note.textContent = 'Copilot bu ortamda kullanılamıyor; bulguyu görüntüleyip manuel çözebilirsiniz.';
+    note.textContent =
+      `${view.provider.label} şu anda kullanılamıyor; bulguyu görüntüleyip manuel çözebilirsiniz. ` +
+      (view.provider.hint ?? '');
     card.append(note);
   }
 
   const spinner = el('div', { class: 'spinner' });
-  spinner.textContent = 'Copilot ile çözüm üretiliyor…';
+  spinner.textContent = `${view.provider.label} ile çözüm üretiliyor…`;
   busyEl = spinner;
 
   const status = el('div', { class: 'status' });

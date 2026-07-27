@@ -1,7 +1,19 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-export type AuditEventType = 'suggestion' | 'accept' | 'reject' | 'rescan' | 'error';
+export type AuditEventType =
+  | 'suggestion'
+  | 'accept'
+  | 'reject'
+  | 'rescan'
+  | 'error'
+  | 'rules-load'
+  | 'coverage-scan'
+  | 'build'
+  | 'test-suggestion'
+  | 'test-accept'
+  | 'test-reject'
+  | 'test-verify';
 
 export interface AuditEvent {
   type: AuditEventType;
@@ -12,6 +24,11 @@ export interface AuditEvent {
   issueKey?: string;
   file?: string;
   detail?: string;
+  /** Kullanılan model sağlayıcı ("copilot" | "local"). */
+  provider?: string;
+  /** Model etiketi; gizli değer içermez. */
+  model?: string;
+  durationMs?: number;
 }
 
 /** record()'a verilen girdi — `at` ve `actor` logger tarafından doldurulur. */
@@ -21,6 +38,9 @@ export interface AuditInput {
   issueKey?: string;
   file?: string;
   detail?: string;
+  provider?: string;
+  model?: string;
+  durationMs?: number;
 }
 
 export interface FileAppender {
@@ -63,7 +83,10 @@ export class AuditLogger implements AuditSink {
       ...(input.ruleKey ? { ruleKey: input.ruleKey } : {}),
       ...(input.issueKey ? { issueKey: input.issueKey } : {}),
       ...(input.file ? { file: input.file } : {}),
-      ...(input.detail ? { detail: input.detail } : {})
+      ...(input.detail ? { detail: input.detail } : {}),
+      ...(input.provider ? { provider: input.provider } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {})
     };
     try {
       await this.appender.append(JSON.stringify(event));
@@ -85,6 +108,15 @@ function format(event: AuditEvent): string {
   }
   if (event.file) {
     parts.push(`file=${event.file}`);
+  }
+  if (event.provider) {
+    parts.push(`provider=${event.provider}`);
+  }
+  if (event.model) {
+    parts.push(`model=${event.model}`);
+  }
+  if (event.durationMs !== undefined) {
+    parts.push(`durationMs=${event.durationMs}`);
   }
   if (event.detail) {
     parts.push(`detail=${event.detail}`);

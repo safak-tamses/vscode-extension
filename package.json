@@ -65,7 +65,11 @@
       },
       {
         "command": "code-health.clearToken",
-        "title": "Kod Sağlığı: Kayıtlı Token'ı Sil"
+        "title": "Kod Sağlığı: Kayıtlı SonarQube Token'ını Sil"
+      },
+      {
+        "command": "code-health.clearLlmKey",
+        "title": "Kod Sağlığı: Kayıtlı Local LLM API Anahtarını Sil"
       }
     ],
     "menus": {
@@ -126,17 +130,102 @@
           "default": 8,
           "description": "Fix bağlamı için bulgu çevresinde alınacak satır sayısı."
         },
-        "codeHealth.copilotVendor": {
-          "type": "string",
-          "default": "copilot",
-          "description": "Language Model API için model sağlayıcısı (vscode.lm vendor)."
-        },
         "codeHealth.maxIssues": {
           "type": "number",
           "default": 500,
           "description": "Tek taramada çekilecek azami bulgu sayısı."
+        },
+        "codeHealth.rulesDir": {
+          "type": "string",
+          "default": ".code-health/rules",
+          "markdownDescription": "Birim test kural setlerinin arandığı, workspace köküne göreli dizin. Bu dizindeki `*.md` dosyaları okunur."
+        },
+        "codeHealth.llm.provider": {
+          "type": "string",
+          "enum": [
+            "copilot",
+            "local"
+          ],
+          "enumDescriptions": [
+            "GitHub Copilot (VS Code Language Model API)",
+            "Şirket içi (self-hosted) LLM sunucusu"
+          ],
+          "default": "copilot",
+          "description": "Çözüm ve test üretiminde kullanılacak model sağlayıcı."
+        },
+        "codeHealth.llm.copilotVendor": {
+          "type": "string",
+          "default": "copilot",
+          "description": "Language Model API sağlayıcı adı (vscode.lm vendor)."
+        },
+        "codeHealth.llm.copilotFamily": {
+          "type": "string",
+          "default": "",
+          "description": "Model ailesi filtresi (ör. gpt-4o). Boşsa ilk uygun model kullanılır."
+        },
+        "codeHealth.llm.local.protocol": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "ollama"
+          ],
+          "enumDescriptions": [
+            "OpenAI uyumlu (vLLM, TGI, LM Studio, LiteLLM, ağ geçitleri): POST /chat/completions",
+            "Ollama native: POST /api/chat"
+          ],
+          "default": "openai",
+          "description": "Local LLM sunucusunun konuştuğu API protokolü."
+        },
+        "codeHealth.llm.local.baseUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Local LLM sunucu adresi (ör. `http://llm.kurum-ici.local:8000/v1` veya `http://localhost:11434`). API anahtarı bu ayarda **tutulmaz**; SecretStorage'da saklanır."
+        },
+        "codeHealth.llm.local.model": {
+          "type": "string",
+          "default": "",
+          "description": "Kullanılacak model adı (ör. qwen2.5-coder:32b)."
+        },
+        "codeHealth.llm.local.temperature": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Üretim sıcaklığı. Kod üretimi için düşük tutulmalıdır."
+        },
+        "codeHealth.llm.local.maxOutputTokens": {
+          "type": "number",
+          "default": 4096,
+          "description": "Yanıt için azami token sayısı. Test dosyası üretiminde yüksek tutun."
+        },
+        "codeHealth.llm.local.timeoutSec": {
+          "type": "number",
+          "default": 120,
+          "description": "Local LLM isteği için zaman aşımı (saniye)."
+        },
+        "codeHealth.llm.local.extraHeaders": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "markdownDescription": "Kurumsal ağ geçidi için ek HTTP başlıkları. **Gizli değer yazmayın** — bu ayar dosyaya kaydedilir; API anahtarı için kurulum ekranını kullanın."
+        },
+        "codeHealth.testGen.maxRepairAttempts": {
+          "type": "number",
+          "default": 1,
+          "description": "Üretilen test derlenmezse, derleyici hatası verilerek kaç kez onarım denensin."
+        },
+        "codeHealth.testGen.maxContextChars": {
+          "type": "number",
+          "default": 60000,
+          "description": "Test üretimi isteminde kullanılacak azami karakter sayısı (bağlam bütçesi)."
         }
       }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Güvenilmeyen workspace'lerde bulgular görüntülenir; kural dosyasındaki derleme komutu ÇALIŞTIRILMAZ."
     }
   },
   "scripts": {

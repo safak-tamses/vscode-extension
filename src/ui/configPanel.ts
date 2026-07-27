@@ -3,7 +3,7 @@ import { getNonce, getWebviewHtml } from './html';
 import type { ConfigStore } from '../config';
 import type { ConfigFormState, ConfigFromWebview, ConfigToWebview } from './messages';
 import { SonarClient } from '../sonar/client';
-import { FetchHttpClient } from '../sonar/http';
+import { FetchHttpClient } from '../http';
 
 export interface ConfigPanelDeps {
   store: ConfigStore;

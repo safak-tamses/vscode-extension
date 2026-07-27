@@ -3,38 +3,80 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { ConfigStore } from './config';
 import type { CodeHealthSettings, SettingsStore } from './config';
+import { FetchHttpClient } from './http';
 import { VscodeSecretVault } from './audit/secrets';
 import { AuditLogger, FsFileAppender } from './audit/audit';
 import type { OutputSink } from './audit/audit';
 import { SonarClient } from './sonar/client';
-import { FetchHttpClient } from './sonar/http';
 import { componentToPath } from './sonar/types';
 import type { SonarIssue, SonarRule } from './sonar/types';
+import { CopilotGateway } from './llm/copilotGateway';
+import { createLlmGateway } from './llm/factory';
+import { LlmUnavailableError } from './llm/gateway';
+import type { CancelSignal, LlmGateway } from './llm/gateway';
 import { groupFindings } from './ui/grouping';
 import { FindingsTreeProvider } from './ui/tree';
 import { ConfigPanel } from './ui/configPanel';
 import { DetailPanel } from './ui/detailPanel';
 import { buildFindingView } from './ui/findingView';
+import type { ProviderStatus } from './ui/messages';
 import { htmlToText } from './ui/sanitize';
 import { buildFixContext } from './fix/context';
 import type { FixContext } from './fix/context';
-import { FixOrchestrator, CopilotUnavailableError } from './fix/orchestrator';
-import { VscodeLmGateway } from './fix/lmGateway';
+import { FixOrchestrator } from './fix/orchestrator';
 import { PreviewContentProvider, previewAndDecide } from './fix/diff';
+
+/** Ayar alanı -> VS Code configuration anahtarı eşlemesi (derleyici eksiksizliği zorunlu kılar). */
+const SETTING_KEYS: { [K in keyof CodeHealthSettings]: string } = {
+  sonarUrl: 'sonarUrl',
+  projectKey: 'projectKey',
+  branch: 'branch',
+  authScheme: 'authScheme',
+  maxIssues: 'maxIssues',
+  auditLogPath: 'auditLogPath',
+  snippetPadding: 'snippetPadding',
+  rulesDir: 'rulesDir',
+  llmProvider: 'llm.provider',
+  copilotVendor: 'llm.copilotVendor',
+  copilotFamily: 'llm.copilotFamily',
+  localProtocol: 'llm.local.protocol',
+  localBaseUrl: 'llm.local.baseUrl',
+  localModel: 'llm.local.model',
+  localTemperature: 'llm.local.temperature',
+  localMaxOutputTokens: 'llm.local.maxOutputTokens',
+  localTimeoutSec: 'llm.local.timeoutSec',
+  localExtraHeaders: 'llm.local.extraHeaders',
+  testGenMaxRepairAttempts: 'testGen.maxRepairAttempts',
+  testGenMaxContextChars: 'testGen.maxContextChars'
+};
 
 /** VS Code workspace configuration tabanlı ayar deposu. */
 class VscodeSettingsStore implements SettingsStore {
   read(): CodeHealthSettings {
     const c = vscode.workspace.getConfiguration('codeHealth');
+    // 0.1.x'te ayar "codeHealth.copilotVendor" idi; geriye dönük okunur.
+    const legacyVendor = c.get<string>('copilotVendor', '');
     return {
-      sonarUrl: c.get<string>('sonarUrl', ''),
-      projectKey: c.get<string>('projectKey', ''),
-      branch: c.get<string>('branch', ''),
-      authScheme: c.get<'bearer' | 'basic'>('authScheme', 'bearer'),
-      auditLogPath: c.get<string>('auditLogPath', ''),
-      snippetPadding: c.get<number>('snippetPadding', 8),
-      copilotVendor: c.get<string>('copilotVendor', 'copilot'),
-      maxIssues: c.get<number>('maxIssues', 500)
+      sonarUrl: c.get<string>(SETTING_KEYS.sonarUrl, ''),
+      projectKey: c.get<string>(SETTING_KEYS.projectKey, ''),
+      branch: c.get<string>(SETTING_KEYS.branch, ''),
+      authScheme: c.get<'bearer' | 'basic'>(SETTING_KEYS.authScheme, 'bearer'),
+      maxIssues: c.get<number>(SETTING_KEYS.maxIssues, 500),
+      auditLogPath: c.get<string>(SETTING_KEYS.auditLogPath, ''),
+      snippetPadding: c.get<number>(SETTING_KEYS.snippetPadding, 8),
+      rulesDir: c.get<string>(SETTING_KEYS.rulesDir, '.code-health/rules'),
+      llmProvider: c.get<'copilot' | 'local'>(SETTING_KEYS.llmProvider, 'copilot'),
+      copilotVendor: c.get<string>(SETTING_KEYS.copilotVendor, '') || legacyVendor || 'copilot',
+      copilotFamily: c.get<string>(SETTING_KEYS.copilotFamily, ''),
+      localProtocol: c.get<'openai' | 'ollama'>(SETTING_KEYS.localProtocol, 'openai'),
+      localBaseUrl: c.get<string>(SETTING_KEYS.localBaseUrl, ''),
+      localModel: c.get<string>(SETTING_KEYS.localModel, ''),
+      localTemperature: c.get<number>(SETTING_KEYS.localTemperature, 0.1),
+      localMaxOutputTokens: c.get<number>(SETTING_KEYS.localMaxOutputTokens, 4096),
+      localTimeoutSec: c.get<number>(SETTING_KEYS.localTimeoutSec, 120),
+      localExtraHeaders: sanitizeHeaders(c.get<unknown>(SETTING_KEYS.localExtraHeaders, {})),
+      testGenMaxRepairAttempts: c.get<number>(SETTING_KEYS.testGenMaxRepairAttempts, 1),
+      testGenMaxContextChars: c.get<number>(SETTING_KEYS.testGenMaxContextChars, 60000)
     };
   }
 
@@ -43,10 +85,26 @@ class VscodeSettingsStore implements SettingsStore {
     const target = vscode.workspace.workspaceFolders
       ? vscode.ConfigurationTarget.Workspace
       : vscode.ConfigurationTarget.Global;
-    for (const [key, value] of Object.entries(partial)) {
-      await c.update(key, value, target);
+    for (const [field, value] of Object.entries(partial)) {
+      const key = SETTING_KEYS[field as keyof CodeHealthSettings];
+      if (key) {
+        await c.update(key, value, target);
+      }
     }
   }
+}
+
+/** Ayar dosyasından gelen serbest nesneyi string->string başlık haritasına indirger. */
+function sanitizeHeaders(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof value === 'string') {
+        out[key] = value;
+      }
+    }
+  }
+  return out;
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -63,8 +121,34 @@ export function activate(context: vscode.ExtensionContext): void {
     outputSink,
     safeActor()
   );
-  const lm = new VscodeLmGateway(settings.copilotVendor);
-  const orchestrator = new FixOrchestrator(lm, audit);
+
+  // Sağlayıcı ayarları değiştiğinde gateway yeniden kurulur; aksi halde önbellek korunur.
+  let gatewayCache: { key: string; gateway: LlmGateway } | undefined;
+  const llm = (): LlmGateway => {
+    const llmSettings = store.getLlmSettings();
+    const key = JSON.stringify(llmSettings);
+    if (!gatewayCache || gatewayCache.key !== key) {
+      gatewayCache = {
+        key,
+        gateway: createLlmGateway(llmSettings, {
+          http,
+          getApiKey: () => store.getLocalApiKey(),
+          createCopilotGateway: (cfg) => new CopilotGateway(cfg)
+        })
+      };
+    }
+    return gatewayCache.gateway;
+  };
+
+  const providerStatus = async (): Promise<ProviderStatus> => {
+    const gateway = llm();
+    return {
+      id: gateway.id,
+      label: gateway.label,
+      available: await gateway.isAvailable(),
+      hint: gateway.unavailableHint()
+    };
+  };
 
   let currentIssues: SonarIssue[] = [];
 
@@ -76,14 +160,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.registerTextDocumentContentProvider(PreviewContentProvider.scheme, previewProvider)
   );
 
-  void store.isComplete().then((complete) => tree.setConfigured(complete));
+  void store.isSonarComplete().then((complete) => tree.setConfigured(complete));
 
   const openConfig = (): void => {
     ConfigPanel.show({
       store,
       extensionUri: context.extensionUri,
       onSaved: () => {
-        void store.isComplete().then((complete) => {
+        void store.isSonarComplete().then((complete) => {
           tree.setConfigured(complete);
           if (complete) {
             void refresh();
@@ -94,7 +178,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   const refresh = async (): Promise<void> => {
-    if (!(await store.isComplete())) {
+    if (!(await store.isSonarComplete())) {
       tree.setConfigured(false);
       const pick = await vscode.window.showWarningMessage(
         'Önce SonarQube bağlantısını yapılandırın (URL, Project Key, Token).',
@@ -164,14 +248,21 @@ export function activate(context: vscode.ExtensionContext): void {
         DetailPanel.postOutcome('error', 'İlgili dosya workspace içinde bulunamadı.');
         return;
       }
+      const orchestrator = new FixOrchestrator(llm(), audit);
       let proposal;
       try {
         proposal = await orchestrator.propose(issue, ctx);
       } catch (err) {
-        if (err instanceof CopilotUnavailableError) {
-          await audit.record({ type: 'error', ruleKey: issue.rule, issueKey: issue.key, detail: 'copilot-unavailable' });
+        if (err instanceof LlmUnavailableError) {
+          await audit.record({
+            type: 'error',
+            ruleKey: issue.rule,
+            issueKey: issue.key,
+            provider: llm().id,
+            detail: 'llm-unavailable'
+          });
           DetailPanel.postBusy(false);
-          DetailPanel.postOutcome('error', 'Copilot kullanılamıyor. Bulguyu görüntüleyip manuel çözebilirsiniz.');
+          DetailPanel.postOutcome('error', err.message);
           return;
         }
         throw err;
@@ -208,8 +299,11 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showInformationMessage('Çözülecek bulgu yok. Önce tarayın.');
       return;
     }
-    if (!(await lm.isAvailable())) {
-      void vscode.window.showWarningMessage('Copilot kullanılamıyor; toplu çözüm yapılamaz. Bulgular görüntülenebilir.');
+    const gateway = llm();
+    if (!(await gateway.isAvailable())) {
+      void vscode.window.showWarningMessage(
+        `${gateway.label} kullanılamıyor; toplu çözüm yapılamaz. ${gateway.unavailableHint()}`
+      );
       return;
     }
     const confirm = await vscode.window.showWarningMessage(
@@ -223,6 +317,8 @@ export function activate(context: vscode.ExtensionContext): void {
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Kod Sağlığı: Tümünü Çöz', cancellable: true },
       async (progress, token) => {
+        const orchestrator = new FixOrchestrator(gateway, audit);
+        const signal = toCancelSignal(token);
         const issues = [...currentIssues];
         for (let i = 0; i < issues.length; i++) {
           const issue = issues[i];
@@ -235,7 +331,7 @@ export function activate(context: vscode.ExtensionContext): void {
             if (!ctx) {
               continue;
             }
-            const proposal = await orchestrator.propose(issue, ctx);
+            const proposal = await orchestrator.propose(issue, ctx, signal);
             const outcome = await previewAndDecide(proposal, {
               resolveUri: resolveFileUri,
               provider: previewProvider,
@@ -248,8 +344,10 @@ export function activate(context: vscode.ExtensionContext): void {
               await rescanAfterFix(issue);
             }
           } catch (err) {
-            if (err instanceof CopilotUnavailableError) {
-              void vscode.window.showWarningMessage('Copilot erişimi kesildi; toplu çözüm durduruldu.');
+            if (err instanceof LlmUnavailableError) {
+              void vscode.window.showWarningMessage(
+                `${gateway.label} erişimi kesildi; toplu çözüm durduruldu.`
+              );
               break;
             }
             await audit.record({
@@ -271,8 +369,7 @@ export function activate(context: vscode.ExtensionContext): void {
     } catch {
       // Açıklama alınamazsa bulgu yine gösterilir.
     }
-    const copilotAvailable = await lm.isAvailable();
-    const view = buildFindingView(issue, rule, copilotAvailable);
+    const view = buildFindingView(issue, rule, await providerStatus());
     DetailPanel.show(
       {
         extensionUri: context.extensionUri,
@@ -301,16 +398,34 @@ export function activate(context: vscode.ExtensionContext): void {
         })();
       }
     }),
+    vscode.commands.registerCommand('code-health.fixAll', () => void runFixAll()),
     vscode.commands.registerCommand('code-health.clearToken', async () => {
       await store.clearToken();
-      tree.setConfigured(await store.isComplete());
-      void vscode.window.showInformationMessage('Kod Sağlığı: kayıtlı token silindi.');
+      tree.setConfigured(await store.isSonarComplete());
+      void vscode.window.showInformationMessage('Kod Sağlığı: kayıtlı SonarQube token’ı silindi.');
+    }),
+    vscode.commands.registerCommand('code-health.clearLlmKey', async () => {
+      await store.clearLocalApiKey();
+      gatewayCache = undefined;
+      void vscode.window.showInformationMessage('Kod Sağlığı: kayıtlı local LLM API anahtarı silindi.');
     })
   );
 }
 
 export function deactivate(): void {
   // Temizlik context.subscriptions üzerinden yapılır.
+}
+
+/** vscode iptal jetonunu llm katmanının vscode'dan bağımsız portuna uyarlar. */
+function toCancelSignal(token: vscode.CancellationToken): CancelSignal {
+  return {
+    get isCancellationRequested(): boolean {
+      return token.isCancellationRequested;
+    },
+    onCancellationRequested(listener: () => void): { dispose(): void } {
+      return token.onCancellationRequested(() => listener());
+    }
+  };
 }
 
 function safeActor(): string {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FetchHttpClient } from '../../src/sonar/http';
+import { FetchHttpClient } from '../src/http';
 
 test('FetchHttpClient forwards headers and returns status + body text', async () => {
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
@@ -27,4 +27,26 @@ test('FetchHttpClient surfaces non-2xx status without throwing', async () => {
 
   assert.equal(res.status, 401);
   assert.equal(res.body, '{"errors":[]}');
+});
+
+test('FetchHttpClient posts a JSON body and forwards the abort signal', async () => {
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const fakeFetch = (async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    return { status: 200, text: async () => '{"ok":true}' };
+  }) as unknown as typeof fetch;
+
+  const controller = new AbortController();
+  const http = new FetchHttpClient(fakeFetch);
+  const res = await http.post(
+    'http://llm.local/v1/chat/completions',
+    { 'Content-Type': 'application/json' },
+    '{"model":"m"}',
+    controller.signal
+  );
+
+  assert.equal(res.status, 200);
+  assert.equal(calls[0]?.init?.method, 'POST');
+  assert.equal(calls[0]?.init?.body, '{"model":"m"}');
+  assert.equal(calls[0]?.init?.signal, controller.signal);
 });

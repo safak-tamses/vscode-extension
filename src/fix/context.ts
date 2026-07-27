@@ -8,9 +8,20 @@ export interface FixContext {
   startLine: number;
   /** snippet'in dosyadaki son satırı (1-tabanlı). */
   endLine: number;
+  /** Modelin rolünü ve çıktı biçimini sabitleyen sistem mesajı. */
+  system: string;
   /** LLM'e gönderilecek tam istem. */
   prompt: string;
 }
+
+/**
+ * Sistem mesajı: küçük local modellerin çıktı sözleşmesinden sapmasını engeller.
+ */
+export const FIX_SYSTEM_PROMPT = [
+  'Sen kıdemli bir yazılım geliştiricisisin ve statik analiz bulgularını düzeltiyorsun.',
+  'Yanıtın SADECE şu iki parçadan oluşur: (1) tek bir kod bloğu, (2) ardından "GEREKÇE:" satırı.',
+  'Giriş cümlesi, selamlama, madde listesi veya ek açıklama yazma.'
+].join(' ');
 
 /**
  * Bulgu çevresinde `padding` satır içeren bir snippet ve LLM istemi üretir (saf fonksiyon).
@@ -49,9 +60,10 @@ export function buildFixContext(
     'KURALLAR:',
     `- Yalnızca ${startLine}-${endLine} satır aralığının DÜZELTİLMİŞ tam halini ver.`,
     '- İlgisiz satırları AYNEN koru; davranışı değiştirme.',
+    '- Girintiyi ve dosyanın kod stilini koru.',
     '- Çıktıyı tek bir kod bloğu (``` ... ```) içinde döndür.',
     '- Kod bloğundan sonra "GEREKÇE:" ile ne değiştiğini, neden ve hangi kuralı kapattığını 1-3 cümlede açıkla.'
   ].join('\n');
 
-  return { snippet, startLine, endLine, prompt };
+  return { snippet, startLine, endLine, system: FIX_SYSTEM_PROMPT, prompt };
 }

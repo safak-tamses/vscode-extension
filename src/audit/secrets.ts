@@ -1,7 +1,10 @@
 import type * as vscode from 'vscode';
 
-/** SecretStorage anahtarı — token YALNIZCA burada tutulur. */
+/** SecretStorage anahtarı — SonarQube token'ı YALNIZCA burada tutulur. */
 export const SONAR_TOKEN_KEY = 'codeHealth.sonarToken';
+
+/** SecretStorage anahtarı — local LLM API anahtarı YALNIZCA burada tutulur. */
+export const LOCAL_LLM_KEY = 'codeHealth.localLlmApiKey';
 
 /** Gizli değer portu (test edilebilirlik için enjekte edilir). */
 export interface SecretReader {
