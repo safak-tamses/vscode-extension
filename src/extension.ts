@@ -14,6 +14,9 @@ import { CopilotGateway } from './llm/copilotGateway';
 import { createLlmGateway } from './llm/factory';
 import { LlmUnavailableError } from './llm/gateway';
 import type { CancelSignal, LlmGateway } from './llm/gateway';
+import { loadRuleSets } from './coverage/rulesLoader';
+import type { LoadedRules } from './coverage/rulesLoader';
+import { WorkspaceRuleFileSystem, createSampleRuleSet } from './coverage/vscodeRules';
 import { groupFindings } from './ui/grouping';
 import { FindingsTreeProvider } from './ui/tree';
 import { ConfigPanel } from './ui/configPanel';
@@ -153,6 +156,23 @@ export function activate(context: vscode.ExtensionContext): void {
   let currentIssues: SonarIssue[] = [];
 
   const makeClient = (): SonarClient => new SonarClient(http, () => store.getToken(), store.getSonarConfig());
+
+  /** Kural dizinini okur; workspace açık değilse boş sonuç döner. */
+  const loadRules = async (): Promise<LoadedRules> => {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    if (!root) {
+      return { ruleSets: [], files: [], hasErrors: false };
+    }
+    const loaded = await loadRuleSets(
+      new WorkspaceRuleFileSystem(root),
+      store.getSettings().rulesDir
+    );
+    await audit.record({
+      type: 'rules-load',
+      detail: `${loaded.ruleSets.length} kural seti · ${loaded.files.length} dosya${loaded.hasErrors ? ' · hatalı dosya var' : ''}`
+    });
+    return loaded;
+  };
 
   context.subscriptions.push(
     channel,
@@ -408,6 +428,26 @@ export function activate(context: vscode.ExtensionContext): void {
       await store.clearLocalApiKey();
       gatewayCache = undefined;
       void vscode.window.showInformationMessage('Kod Sağlığı: kayıtlı local LLM API anahtarı silindi.');
+    }),
+    vscode.commands.registerCommand('code-health.createSampleRules', async () => {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (!root) {
+        void vscode.window.showWarningMessage('Kural seti oluşturmak için bir klasör/workspace açık olmalı.');
+        return;
+      }
+      try {
+        const created = await createSampleRuleSet(context.extensionUri, root, store.getSettings().rulesDir);
+        if (created) {
+          const loaded = await loadRules();
+          void vscode.window.showInformationMessage(
+            `Örnek kural seti hazır. Şu an ${loaded.ruleSets.length} kural seti etkin.`
+          );
+        }
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          'Kural seti oluşturulamadı: ' + (err instanceof Error ? err.message : String(err))
+        );
+      }
     })
   );
 }

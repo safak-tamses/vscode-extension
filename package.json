@@ -70,6 +70,11 @@
       {
         "command": "code-health.clearLlmKey",
         "title": "Kod Sağlığı: Kayıtlı Local LLM API Anahtarını Sil"
+      },
+      {
+        "command": "code-health.createSampleRules",
+        "title": "Kod Sağlığı: Örnek Test Kural Setini Oluştur",
+        "icon": "$(new-file)"
       }
     ],
     "menus": {
