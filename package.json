@@ -75,6 +75,16 @@
         "command": "code-health.createSampleRules",
         "title": "Kod Sağlığı: Örnek Test Kural Setini Oluştur",
         "icon": "$(new-file)"
+      },
+      {
+        "command": "code-health.scanCoverage",
+        "title": "Kod Sağlığı: Test Kapsamını Tara",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "code-health.generateTest",
+        "title": "Kod Sağlığı: Eksik Birim Testini Üret",
+        "icon": "$(sparkle)"
       }
     ],
     "menus": {

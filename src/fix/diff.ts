@@ -96,3 +96,98 @@ function rangeFor(doc: vscode.TextDocument, startLine: number, endLine: number):
   const end = doc.lineAt(endIndex).range.end;
   return new vscode.Range(start, end);
 }
+
+/** Tam dosya önerisi (üretilen birim test dosyası). */
+export interface FileProposal {
+  /** Workspace'e göreli hedef yol. */
+  filePath: string;
+  /** Dosyanın önerilen tam içeriği. */
+  content: string;
+  rationale: string;
+  /** Diff editörünün başlığı. */
+  title: string;
+}
+
+export interface FilePreviewDeps {
+  /** Dosya varsa Uri'sini döndürür, yoksa undefined. */
+  resolveUri: (relPath: string) => Promise<vscode.Uri | undefined>;
+  /** Dosya yokken yazılacak hedef Uri'yi üretir. */
+  targetUri: (relPath: string) => vscode.Uri | undefined;
+  provider: PreviewContentProvider;
+  onAccept: () => Promise<void>;
+  onReject: () => Promise<void>;
+}
+
+/**
+ * Tam bir dosyayı (yeni veya mevcut) diff olarak gösterir ve kullanıcı kararını bekler.
+ * OTOMATIK YAZMA YOK: yalnızca "Uygula" seçilirse WorkspaceEdit ile yazılır.
+ * Yeni dosya, boş bir sanal dokümana karşı diff'lenir; mevcut dosya tam içerikle karşılaştırılır.
+ */
+export async function previewFileAndDecide(
+  proposal: FileProposal,
+  deps: FilePreviewDeps
+): Promise<FixOutcome> {
+  if (!proposal.content.trim()) {
+    void vscode.window.showInformationMessage('Model uygulanabilir bir dosya içeriği üretmedi.');
+    return 'noop';
+  }
+
+  const existing = await deps.resolveUri(proposal.filePath);
+  const left = existing ?? deps.provider.set(`${proposal.filePath} (henüz yok)`, '');
+  const right = deps.provider.set(proposal.filePath, proposal.content);
+
+  await vscode.commands.executeCommand(
+    'vscode.diff',
+    left,
+    right,
+    proposal.title,
+    { preview: true } satisfies vscode.TextDocumentShowOptions
+  );
+
+  const choice = await vscode.window.showInformationMessage(
+    existing
+      ? 'Mevcut test dosyası bu şekilde güncellenecek. Uygulanacak mı?'
+      : 'Bu test dosyası oluşturulacak. Uygulanacak mı?',
+    { modal: true, detail: proposal.rationale },
+    'Uygula',
+    'Reddet'
+  );
+
+  if (choice !== 'Uygula') {
+    await deps.onReject();
+    return 'rejected';
+  }
+
+  const target = existing ?? deps.targetUri(proposal.filePath);
+  if (!target) {
+    void vscode.window.showErrorMessage(`Hedef yol çözümlenemedi: ${proposal.filePath}`);
+    return 'error';
+  }
+
+  const edit = new vscode.WorkspaceEdit();
+  if (existing) {
+    const doc = await vscode.workspace.openTextDocument(existing);
+    const full = new vscode.Range(new vscode.Position(0, 0), doc.lineAt(doc.lineCount - 1).range.end);
+    edit.replace(existing, full, proposal.content);
+  } else {
+    edit.createFile(target, {
+      overwrite: false,
+      ignoreIfExists: false,
+      contents: new TextEncoder().encode(proposal.content)
+    });
+  }
+
+  if (!(await vscode.workspace.applyEdit(edit))) {
+    void vscode.window.showErrorMessage('Test dosyası yazılamadı.');
+    return 'error';
+  }
+
+  // Doğrulama derlemesi dosyayı diskten okuyacağı için değişiklik kaydedilir.
+  const doc = await vscode.workspace.openTextDocument(target);
+  if (doc.isDirty) {
+    await doc.save();
+  }
+  await vscode.window.showTextDocument(doc, { preview: false });
+  await deps.onAccept();
+  return 'applied';
+}

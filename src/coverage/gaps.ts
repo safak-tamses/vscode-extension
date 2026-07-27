@@ -14,6 +14,19 @@ export type GapReason =
   /** Bazı metotlar hiç çalıştırılmamış. */
   | 'uncovered-methods';
 
+/** Sebep kodlarının kullanıcıya gösterilen karşılıkları. */
+export const GAP_REASON_LABELS: Record<GapReason, string> = {
+  'no-test-file': 'test dosyası yok',
+  'no-covered-method': 'hiç çalıştırılmamış',
+  'below-threshold': 'eşik altında',
+  'uncovered-methods': 'kapsanmayan metot'
+};
+
+/** Sebepleri okunur tek satıra çevirir. */
+export function describeReasons(reasons: readonly GapReason[]): string {
+  return reasons.map((r) => GAP_REASON_LABELS[r]).join(' · ');
+}
+
 export interface MethodGap {
   name: string;
   /** İnsan okur imza, ör. `create(OrderRequest): Order`. */
