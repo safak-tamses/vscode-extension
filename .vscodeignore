@@ -1,6 +1,7 @@
 .vscode/**
 .claude/**
 .git/**
+.idea/**
 .gitignore
 CLAUDE.md
 docs/**

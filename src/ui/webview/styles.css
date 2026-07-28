@@ -1,8 +1,71 @@
+/* ============================================================================
+   Akıllı Kod Sağlığı Asistanı — webview tasarım sistemi
+   VS Code tema değişkenleri üzerine kurulu; açık/koyu temada otomatik uyumlu.
+   Sıfır bağımlılık: dış font/CDN yok, ikonlar satır içi SVG.
+   ========================================================================== */
+
 :root {
   color-scheme: light dark;
-  --ch-gap: 12px;
-  --ch-radius: 6px;
-  --ch-border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+
+  /* Boşluk ölçeği */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 28px;
+  --sp-7: 40px;
+
+  /* Köşe yarıçapları */
+  --r-sm: 4px;
+  --r-md: 7px;
+  --r-lg: 11px;
+  --r-full: 999px;
+
+  /* Tipografi */
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.8rem;
+  --fs-md: 0.875rem;
+  --fs-lg: 1rem;
+  --fs-xl: 1.3rem;
+  --fs-2xl: 1.75rem;
+
+  /* Yüzeyler — tema arka planından türetilir */
+  --surface: var(--vscode-editor-background);
+  --surface-raised: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --surface-sunken: rgba(127, 127, 127, 0.06);
+  --surface-hover: rgba(127, 127, 127, 0.09);
+
+  --line: var(--vscode-panel-border, rgba(127, 127, 127, 0.28));
+  --line-strong: var(--vscode-contrastBorder, rgba(127, 127, 127, 0.45));
+
+  --text: var(--vscode-foreground);
+  --text-dim: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-textLink-foreground, #3794ff);
+  --focus: var(--vscode-focusBorder, #3794ff);
+
+  /* Anlamsal renkler */
+  --ok: var(--vscode-testing-iconPassed, #3fb950);
+  --warn: var(--vscode-editorWarning-foreground, #d29922);
+  --danger: var(--vscode-errorForeground, #f85149);
+  --info: var(--vscode-charts-blue, #539bf5);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.14);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.16);
+  --anim: 120ms cubic-bezier(0.3, 0, 0.2, 1);
+}
+
+@supports (background: color-mix(in srgb, red 10%, transparent)) {
+  :root {
+    --surface-sunken: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+    --surface-hover: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --anim: 1ms linear;
+  }
 }
 
 * {
@@ -10,121 +73,377 @@
 }
 
 body {
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
-  color: var(--vscode-foreground);
-  background: var(--vscode-editor-background);
   margin: 0;
   padding: 0;
-  line-height: 1.5;
+  font-family: var(--vscode-font-family);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
 }
 
 .container {
-  max-width: 720px;
+  max-width: 900px;
   margin: 0 auto;
-  padding: 20px 22px 32px;
+  padding: var(--sp-5) var(--sp-5) var(--sp-7);
 }
 
-/* ---- Header ---- */
-.header {
+.container.wide {
+  max-width: 1180px;
+}
+
+/* ---------------------------------------------------------------- tipografi */
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: var(--fs-xl);
+}
+
+h2 {
+  font-size: var(--fs-md);
+}
+
+h3 {
+  font-size: var(--fs-sm);
+}
+
+.mono {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 0.92em;
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ başlık */
+
+.page-header {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding-bottom: 14px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--ch-border);
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-4);
+  margin-bottom: var(--sp-5);
+  border-bottom: 1px solid var(--line);
 }
 
-.header h1 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0 0 2px;
+.page-header .glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  color: var(--accent);
 }
 
-.header .subtitle {
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.85rem;
+.page-header .grow {
+  min-width: 0;
+  flex: 1;
 }
 
-/* ---- Card ---- */
+.page-header .subtitle {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.page-header .aside {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* -------------------------------------------------------------------- kart */
+
 .card {
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  border: 1px solid var(--ch-border);
-  border-radius: var(--ch-radius);
-  padding: 16px 18px;
-  margin-bottom: var(--ch-gap);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4) var(--sp-4) var(--sp-4);
+  margin-bottom: var(--sp-3);
 }
 
-.card h2 {
-  font-size: 0.95rem;
+.card.flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.card-head .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.card-note {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.section-label {
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* -------------------------------------------------------------------- ikon */
+
+.icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  vertical-align: -3px;
+}
+
+.icon.lg {
+  width: 20px;
+  height: 20px;
+}
+
+.icon.xl {
+  width: 26px;
+  height: 26px;
+}
+
+/* -------------------------------------------------------------------- tabs */
+
+.tabs {
+  display: flex;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-md);
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  transition: color var(--anim), border-color var(--anim);
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
   font-weight: 600;
-  margin: 0 0 12px;
 }
 
-/* ---- Form ---- */
+.tab:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+
+.tabpanel[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------- segmented control */
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--sp-2);
+}
+
+.segment {
+  appearance: none;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  transition: border-color var(--anim), background var(--anim);
+}
+
+.segment:hover {
+  background: var(--surface-hover);
+}
+
+.segment:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.segment[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.segment .glyph {
+  color: var(--accent);
+  margin-top: 1px;
+}
+
+.segment .seg-title {
+  font-weight: 600;
+}
+
+.segment .seg-desc {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+/* ------------------------------------------------------------------- form */
+
 .field {
-  margin-bottom: 14px;
+  margin-bottom: var(--sp-4);
 }
 
 .field:last-child {
   margin-bottom: 0;
 }
 
-.field label {
+.field > label {
   display: block;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
-  margin-bottom: 5px;
+  margin-bottom: var(--sp-1);
 }
 
 .field .hint {
   display: block;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.78rem;
-  margin-top: 4px;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--sp-3);
 }
 
 input[type='text'],
 input[type='password'],
-select {
+input[type='number'],
+select,
+textarea {
   width: 100%;
-  padding: 6px 9px;
+  padding: 7px 10px;
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: var(--fs-md);
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--ch-border));
-  border-radius: 4px;
+  border: 1px solid var(--vscode-input-border, var(--line));
+  border-radius: var(--r-sm);
   outline: none;
+  transition: border-color var(--anim), box-shadow var(--anim);
+}
+
+input:hover:not(:disabled),
+select:hover:not(:disabled) {
+  border-color: var(--line-strong);
 }
 
 input:focus,
-select:focus {
-  border-color: var(--vscode-focusBorder);
+select:focus,
+textarea:focus {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+input:disabled,
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 input::placeholder {
   color: var(--vscode-input-placeholderForeground);
 }
 
-/* ---- Buttons ---- */
+/* ----------------------------------------------------------------- butonlar */
+
 .actions {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   flex-wrap: wrap;
-  margin-top: 16px;
+  margin-top: var(--sp-4);
+}
+
+.actions.tight {
+  margin-top: var(--sp-2);
 }
 
 button {
+  appearance: none;
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: var(--fs-md);
+  font-weight: 500;
   padding: 6px 14px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: var(--sp-2);
+  transition: background var(--anim), opacity var(--anim);
+}
+
+button:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
 }
 
 button:disabled {
@@ -150,129 +469,654 @@ button.secondary:hover:not(:disabled) {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
-/* ---- Status banner ---- */
-.status {
-  display: none;
-  margin-top: 14px;
-  padding: 9px 12px;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  border: 1px solid transparent;
+button.ghost {
+  color: var(--text);
+  background: transparent;
+  border-color: var(--line);
 }
 
-.status.show {
-  display: block;
+button.ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
 }
 
-.status.ok {
-  color: var(--vscode-testing-iconPassed, #3fb950);
-  border-color: var(--vscode-testing-iconPassed, #3fb950);
-  background: color-mix(in srgb, var(--vscode-testing-iconPassed, #3fb950) 12%, transparent);
+button.link {
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  text-decoration: none;
 }
 
-.status.error {
-  color: var(--vscode-errorForeground, #f85149);
-  border-color: var(--vscode-errorForeground, #f85149);
-  background: color-mix(in srgb, var(--vscode-errorForeground, #f85149) 12%, transparent);
+button.link:hover:not(:disabled) {
+  text-decoration: underline;
 }
 
-.status.info {
-  color: var(--vscode-foreground);
-  border-color: var(--ch-border);
-  background: var(--vscode-textBlockQuote-background, transparent);
+button.tiny {
+  font-size: var(--fs-xs);
+  padding: 3px 9px;
 }
 
-/* ---- Badges (severity / type) ---- */
+/* ------------------------------------------------------------------ rozet */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 9px;
+  border-radius: var(--r-full);
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.badge.solid {
+  border-color: transparent;
+  background: var(--surface-sunken);
+}
+
+.badge.ok {
+  color: var(--ok);
+}
+
+.badge.warn {
+  color: var(--warn);
+}
+
+.badge.danger {
+  color: var(--danger);
+}
+
+.badge.info {
+  color: var(--info);
+}
+
+.badge.neutral {
+  color: var(--text-dim);
+}
+
 .badges {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin: 6px 0 2px;
-}
-
-.badge {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 2px 8px;
-  border-radius: 10px;
-  border: 1px solid currentColor;
 }
 
 .badge.sev-BLOCKER,
 .badge.sev-CRITICAL {
-  color: var(--vscode-errorForeground, #f85149);
+  color: var(--danger);
 }
 
 .badge.sev-MAJOR {
-  color: var(--vscode-editorWarning-foreground, #d29922);
+  color: var(--warn);
 }
 
 .badge.sev-MINOR,
 .badge.sev-INFO {
-  color: var(--vscode-charts-blue, #539bf5);
+  color: var(--info);
 }
 
-.badge.type {
-  color: var(--vscode-descriptionForeground);
+/* ------------------------------------------------------------ durum şeridi */
+
+.status {
+  display: none;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-sunken);
+  line-height: 1.5;
 }
 
-/* ---- Detail description ---- */
-.meta {
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.82rem;
-  margin-bottom: 10px;
+.status.show {
+  display: flex;
+}
+
+.status .icon {
+  margin-top: 2px;
+}
+
+.status.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.status.error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.status.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.status.info {
+  color: var(--text);
+}
+
+@supports (background: color-mix(in srgb, red 10%, transparent)) {
+  .status.ok {
+    background: color-mix(in srgb, var(--ok) 11%, transparent);
+  }
+  .status.error {
+    background: color-mix(in srgb, var(--danger) 11%, transparent);
+  }
+  .status.warn {
+    background: color-mix(in srgb, var(--warn) 11%, transparent);
+  }
+}
+
+/* -------------------------------------------------------- kapsam göstergesi */
+
+.meter {
+  --value: 0;
+  position: relative;
+  height: 7px;
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  width: calc(var(--value) * 1%);
+  border-radius: var(--r-full);
+  background: var(--ok);
+  transition: width 240ms ease-out;
+}
+
+.meter.warn > span {
+  background: var(--warn);
+}
+
+.meter.danger > span {
+  background: var(--danger);
+}
+
+.meter-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.meter-row .value {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  min-width: 34px;
+  text-align: right;
+}
+
+/* --------------------------------------------------------------- özet halka */
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-4);
+  align-items: center;
+}
+
+.ring {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.ring svg {
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+.ring .track {
+  stroke: var(--surface-sunken);
+}
+
+.ring .value {
+  stroke: var(--ok);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 320ms ease-out;
+}
+
+.ring.warn .value {
+  stroke: var(--warn);
+}
+
+.ring.danger .value {
+  stroke: var(--danger);
+}
+
+.ring .ring-text {
+  min-width: 0;
+}
+
+.ring .ring-pct {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.ring .ring-label {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.stat {
+  min-width: 0;
+}
+
+.stat .stat-value {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.stat .stat-label {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------------- liste */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line);
+  transition: background var(--anim);
+}
+
+.row:first-child {
+  border-top: none;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.row .row-main {
+  min-width: 0;
+}
+
+.row .row-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-weight: 600;
+}
+
+.row .row-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+.row .row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: var(--sp-2);
+}
+
+.row .row-actions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}
+
+.row-link {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-link:hover .row-title {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.row-link:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+.method-list {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.method-list li {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+@media (max-width: 620px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+  .row .row-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* ---------------------------------------------------------- filtre / araçlar */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+
+.toolbar .grow {
+  flex: 1;
+  min-width: 140px;
+}
+
+.chip {
+  appearance: none;
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  background: var(--surface-sunken);
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  padding: 3px 11px;
+  cursor: pointer;
+  transition: color var(--anim), border-color var(--anim);
+}
+
+.chip:hover {
+  color: var(--text);
+}
+
+.chip[aria-pressed='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------ boş / yükleme */
+
+.empty {
+  text-align: center;
+  padding: var(--sp-7) var(--sp-4);
+  color: var(--text-dim);
+}
+
+.empty .glyph {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin: 0 auto var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  color: var(--accent);
+}
+
+.empty h2 {
+  color: var(--text);
+  font-size: var(--fs-lg);
+  margin-bottom: var(--sp-1);
+}
+
+.empty p {
+  margin: 0 auto;
+  max-width: 460px;
+  font-size: var(--fs-sm);
+}
+
+.empty .actions {
+  justify-content: center;
+}
+
+.skeleton {
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton.line {
+  height: 11px;
+  margin-bottom: var(--sp-2);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.spinner {
+  display: none;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.spinner.show {
+  display: flex;
+}
+
+.spinner .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  animation: bounce 1s infinite ease-in-out;
+}
+
+.spinner .dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.spinner .dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------- kural dosyası kartı */
+
+.rule-file {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-2);
+  background: var(--surface-sunken);
+}
+
+.rule-file:last-child {
+  margin-bottom: 0;
+}
+
+.rule-file .rule-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.rule-file .rule-head .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.issue-list {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-4);
+  font-size: var(--fs-xs);
+}
+
+.issue-list li {
+  margin-bottom: 2px;
+}
+
+.issue-list li.err {
+  color: var(--danger);
+}
+
+.issue-list li.warn {
+  color: var(--warn);
+}
+
+/* ------------------------------------------------------- bulgu açıklaması */
+
+.location {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.location:hover {
+  text-decoration: underline;
 }
 
 .message {
-  font-size: 0.95rem;
+  font-size: var(--fs-lg);
   font-weight: 500;
-  margin: 4px 0 14px;
+  margin: var(--sp-3) 0;
+  line-height: 1.45;
 }
 
 .description {
-  font-size: 0.88rem;
-  border-top: 1px solid var(--ch-border);
-  padding-top: 12px;
+  font-size: var(--fs-md);
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-3);
+  margin-top: var(--sp-3);
+  overflow-wrap: break-word;
+}
+
+.description h2,
+.description h3,
+.description h4 {
+  font-size: var(--fs-md);
+  margin: var(--sp-4) 0 var(--sp-2);
+}
+
+.description p {
+  margin: 0 0 var(--sp-3);
+}
+
+.description ul,
+.description ol {
+  margin: 0 0 var(--sp-3);
+  padding-left: var(--sp-5);
 }
 
 .description pre,
 .description code {
   font-family: var(--vscode-editor-font-family, monospace);
-  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.15));
-  border-radius: 4px;
+  background: var(--vscode-textCodeBlock-background, var(--surface-sunken));
+  border-radius: var(--r-sm);
 }
 
 .description pre {
-  padding: 10px;
+  padding: var(--sp-3);
   overflow-x: auto;
+  border: 1px solid var(--line);
 }
 
 .description code {
-  padding: 1px 4px;
+  padding: 1px 5px;
+  font-size: 0.9em;
 }
 
-.description h2,
-.description h3 {
-  font-size: 0.92rem;
+.description a {
+  color: var(--accent);
 }
 
-.location {
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 0.82rem;
-  color: var(--vscode-textLink-foreground);
-  cursor: pointer;
-  margin-bottom: 8px;
-  display: inline-block;
-}
-
-.spinner {
-  display: none;
-  font-size: 0.82rem;
-  color: var(--vscode-descriptionForeground);
-  margin-top: 8px;
-}
-
-.spinner.show {
+.description table {
+  border-collapse: collapse;
+  width: 100%;
   display: block;
+  overflow-x: auto;
+}
+
+.description th,
+.description td {
+  border: 1px solid var(--line);
+  padding: var(--sp-1) var(--sp-2);
+  text-align: left;
+}
+
+/* ------------------------------------------------------------------- yardım */
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.kv dt {
+  color: var(--text-dim);
+}
+
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

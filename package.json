@@ -19,7 +19,8 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onView:codeHealthFindings"
+    "onView:codeHealthFindings",
+    "onView:codeHealthCoverage"
   ],
   "contributes": {
     "viewsContainers": {
@@ -35,10 +36,20 @@
       "codeHealth": [
         {
           "id": "codeHealthFindings",
-          "name": "Bulgular"
+          "name": "Sonar Bulguları"
+        },
+        {
+          "id": "codeHealthCoverage",
+          "name": "Eksik Testler"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "codeHealthCoverage",
+        "contents": "Eksik birim testlerini bulmak için kapsamı tarayın.\n\nKurallar `.code-health/rules/*.md` dizininden okunur: `---` arası frontmatter eşikleri ve derleme komutunu belirler, `---` sonrası Markdown gövdesi ise test yazım kurallarınız olarak modele aynen iletilir.\n\n[Test Kapsamını Tara](command:code-health.scanCoverage)\n[Örnek Kural Setini Oluştur](command:code-health.createSampleRules)"
+      }
+    ],
     "commands": [
       {
         "command": "code-health.configure",
@@ -85,6 +96,20 @@
         "command": "code-health.generateTest",
         "title": "Kod Sağlığı: Eksik Birim Testini Üret",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "code-health.showCoverage",
+        "title": "Kod Sağlığı: Test Kapsamı Panelini Aç",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "code-health.configureLlm",
+        "title": "Kod Sağlığı: Model Sağlayıcıyı Seç (Copilot / Local LLM)",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "code-health.openGapSource",
+        "title": "Kod Sağlığı: Kaynağı Aç"
       }
     ],
     "menus": {
@@ -98,6 +123,21 @@
           "command": "code-health.configure",
           "when": "view == codeHealthFindings",
           "group": "navigation@2"
+        },
+        {
+          "command": "code-health.scanCoverage",
+          "when": "view == codeHealthCoverage",
+          "group": "navigation@1"
+        },
+        {
+          "command": "code-health.showCoverage",
+          "when": "view == codeHealthCoverage",
+          "group": "navigation@2"
+        },
+        {
+          "command": "code-health.createSampleRules",
+          "when": "view == codeHealthCoverage",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -105,6 +145,17 @@
           "command": "code-health.fix",
           "when": "view == codeHealthFindings && viewItem == issue",
           "group": "inline"
+        },
+        {
+          "command": "code-health.generateTest",
+          "when": "view == codeHealthCoverage && viewItem == coverageGap",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "code-health.openGapSource",
+          "when": "false"
         }
       ]
     },

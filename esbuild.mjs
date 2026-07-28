@@ -18,7 +18,7 @@ const extensionConfig = {
 
 /** @type {import('esbuild').BuildOptions} */
 const webviewConfig = {
-  entryPoints: ['src/ui/webview/config.ts', 'src/ui/webview/detail.ts'],
+  entryPoints: ['src/ui/webview/config.ts', 'src/ui/webview/detail.ts', 'src/ui/webview/coverage.ts'],
   outdir: 'dist/webview',
   bundle: true,
   platform: 'browser',

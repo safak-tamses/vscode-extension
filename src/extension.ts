@@ -29,9 +29,12 @@ import type { TestRuleSet } from './coverage/rules';
 import { runTestGeneration, toCancelSignal } from './testgen/flow';
 import { groupFindings } from './ui/grouping';
 import { FindingsTreeProvider } from './ui/tree';
+import { CoverageTreeProvider } from './ui/coverageTree';
 import { ConfigPanel } from './ui/configPanel';
+import { CoveragePanel } from './ui/coveragePanel';
 import { DetailPanel } from './ui/detailPanel';
 import { buildFindingView } from './ui/findingView';
+import { buildCoverageView, gapId } from './ui/coverageView';
 import type { ProviderStatus } from './ui/messages';
 import { htmlToText } from './ui/sanitize';
 import { buildFixContext } from './fix/context';
@@ -124,6 +127,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const store = new ConfigStore(new VscodeSettingsStore(), new VscodeSecretVault(context.secrets));
   const http = new FetchHttpClient();
   const tree = new FindingsTreeProvider();
+  const coverageTree = new CoverageTreeProvider();
   const previewProvider = new PreviewContentProvider();
 
   const settings = store.getSettings();
@@ -267,69 +271,134 @@ export function activate(context: vscode.ExtensionContext): void {
       },
       { build, ...(cancel ? { cancel } : {}) }
     );
-    coverage = result;
+    await publishCoverage(result);
     return result;
   };
 
-  const scanCoverageCommand = async (): Promise<void> => {
+  /** Tarama sonucunu ağaç ve panele yayar. */
+  const publishCoverage = async (result: CoverageScanResult): Promise<void> => {
+    coverage = result;
+    coverageTree.setGaps(result.gaps);
+    if (CoveragePanel.isOpen) {
+      CoveragePanel.postView(buildCoverageView(result, await providerStatus(), new Date()));
+    }
+  };
+
+  const openCoveragePanel = async (result?: CoverageScanResult): Promise<void> => {
+    const view = result ?? coverage;
+    CoveragePanel.show(
+      {
+        extensionUri: context.extensionUri,
+        onScan: (build) => void runScanCommand(build),
+        onGenerate: (id) => void generateTestCommand(findGapById(id)),
+        onOpenSource: (id) => void openGapFile(findGapById(id), 'source'),
+        onOpenTest: (id) => void openGapFile(findGapById(id), 'test'),
+        onConfigure: () => openConfig(),
+        onCreateSampleRules: () => void vscode.commands.executeCommand('code-health.createSampleRules')
+      },
+      view ? buildCoverageView(view, await providerStatus(), new Date()) : undefined
+    );
+  };
+
+  const findGapById = (id: string): CoverageGap | undefined =>
+    coverage?.gaps.find((gap) => gapId(gap) === id);
+
+  const openGapFile = async (gap: CoverageGap | undefined, which: 'source' | 'test', line?: number): Promise<void> => {
+    if (!gap) {
+      return;
+    }
+    const relPath = which === 'source' ? gap.sourcePath : gap.testPath;
+    const uri = await resolveFileUri(relPath);
+    if (!uri) {
+      void vscode.window.showWarningMessage(`Dosya bulunamadı: ${relPath}`);
+      return;
+    }
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.One });
+    if (line !== undefined) {
+      const pos = new vscode.Position(Math.max(0, line - 1), 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    }
+  };
+
+  /** Kural seti yoksa kullanıcıyı doğru adıma yönlendirir; taramaya devam edilebilirse true döner. */
+  const ensureRules = async (): Promise<boolean> => {
     const root = workspaceRoot();
     if (!root) {
       void vscode.window.showWarningMessage('Kapsam taraması için bir klasör/workspace açık olmalı.');
-      return;
+      return false;
     }
     const rules = await loadRules();
-    if (rules.ruleSets.length === 0) {
-      const pick = await vscode.window.showWarningMessage(
-        rules.hasErrors
-          ? 'Kural dosyalarında hata var; kapsam taraması yapılamaz.'
-          : 'Etkin bir test kural seti bulunamadı.',
-        rules.hasErrors ? 'Kural Dosyasını Aç' : 'Örnek Kural Seti Oluştur'
+    if (rules.ruleSets.length > 0) {
+      return true;
+    }
+    const pick = await vscode.window.showWarningMessage(
+      rules.hasErrors
+        ? 'Kural dosyalarında hata var; kapsam taraması yapılamaz.'
+        : 'Etkin bir test kural seti bulunamadı.',
+      rules.hasErrors ? 'Kural Dosyasını Aç' : 'Örnek Kural Seti Oluştur'
+    );
+    if (pick === 'Örnek Kural Seti Oluştur') {
+      await vscode.commands.executeCommand('code-health.createSampleRules');
+    } else if (pick === 'Kural Dosyasını Aç') {
+      const broken = rules.files.find((f) => f.errors.length > 0);
+      if (broken) {
+        const uri = vscode.Uri.joinPath(root, ...broken.path.split('/').filter(Boolean));
+        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri));
+      }
+    }
+    return false;
+  };
+
+  /** Taramayı çalıştırır; `build` verilmezse kullanıcıya derleme yapılıp yapılmayacağı sorulur. */
+  const runScanCommand = async (build?: boolean): Promise<void> => {
+    if (!(await ensureRules())) {
+      return;
+    }
+    const command = (await loadRules()).ruleSets[0]?.coverage.buildCommand ?? 'mvn clean install';
+
+    let shouldBuild = build;
+    if (shouldBuild === undefined) {
+      const mode = await vscode.window.showQuickPick(
+        [
+          {
+            label: '$(play) Derle ve tara',
+            description: command,
+            detail: 'Taze JaCoCo raporu üretir. Komut onayınızla çalıştırılır.',
+            build: true
+          },
+          {
+            label: '$(file-code) Var olan raporu oku',
+            description: 'derleme yapılmaz',
+            detail: 'Daha önce üretilmiş jacoco.xml dosyalarını okur (hızlı).',
+            build: false
+          }
+        ],
+        { title: 'Kapsam taraması', placeHolder: 'Nasıl taranacak?' }
       );
-      if (pick === 'Örnek Kural Seti Oluştur') {
-        await vscode.commands.executeCommand('code-health.createSampleRules');
-      } else if (pick === 'Kural Dosyasını Aç') {
-        const broken = rules.files.find((f) => f.errors.length > 0);
-        if (broken) {
-          const uri = vscode.Uri.joinPath(root, ...broken.path.split('/').filter(Boolean));
-          await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri));
-        }
+      if (!mode) {
+        return;
       }
-      return;
+      shouldBuild = mode.build;
     }
 
-    const command = rules.ruleSets[0]?.coverage.buildCommand ?? 'mvn clean install';
-    const mode = await vscode.window.showQuickPick(
-      [
-        {
-          label: '$(play) Derle ve tara',
-          description: command,
-          detail: 'Taze JaCoCo raporu üretir. Komut onayınızla çalıştırılır.',
-          build: true
-        },
-        {
-          label: '$(file-code) Var olan raporu oku',
-          description: 'derleme yapılmaz',
-          detail: 'Daha önce üretilmiş jacoco.xml dosyalarını okur (hızlı).',
-          build: false
+    CoveragePanel.postBusy(true, shouldBuild ? command : 'Raporlar okunuyor…');
+    try {
+      const result = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Kod Sağlığı: kapsam taranıyor', cancellable: true },
+        async (progress, token) => {
+          if (shouldBuild) {
+            progress.report({ message: command });
+          }
+          return runScan(shouldBuild === true, toCancelSignal(token));
         }
-      ],
-      { title: 'Kapsam taraması', placeHolder: 'Nasıl taranacak?' }
-    );
-    if (!mode) {
-      return;
+      );
+      reportScan(result);
+      await openCoveragePanel(result);
+    } finally {
+      CoveragePanel.postBusy(false);
     }
-
-    const result = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Kod Sağlığı: kapsam taranıyor', cancellable: true },
-      async (progress, token) => {
-        if (mode.build) {
-          progress.report({ message: command });
-        }
-        return runScan(mode.build, toCancelSignal(token));
-      }
-    );
-
-    reportScan(result);
   };
 
   const reportScan = (result: CoverageScanResult): void => {
@@ -344,15 +413,7 @@ export function activate(context: vscode.ExtensionContext): void {
       `Kod Sağlığı: ${result.gaps.length} eksik test · ` +
       `satır %${Math.round(result.summary.lineCoverage)} · dal %${Math.round(result.summary.branchCoverage)} · ` +
       `${result.modules.length} rapor. ${formatBuilds(result.builds)}`;
-    if (result.gaps.length === 0) {
-      void vscode.window.showInformationMessage(summary);
-      return;
-    }
-    void vscode.window.showInformationMessage(summary, 'Eksik Testleri Gör').then((pick) => {
-      if (pick === 'Eksik Testleri Gör') {
-        void vscode.commands.executeCommand('code-health.generateTest');
-      }
-    });
+    void vscode.window.showInformationMessage(summary);
   };
 
   const pickGap = async (gaps: readonly CoverageGap[]): Promise<CoverageGap | undefined> => {
@@ -389,7 +450,7 @@ export function activate(context: vscode.ExtensionContext): void {
         (_progress, token) => runScan(true, cancel ?? toCancelSignal(token))
       ),
     onRescanned: (result: CoverageScanResult) => {
-      coverage = result;
+      void publishCoverage(result);
     }
   };
 
@@ -412,7 +473,7 @@ export function activate(context: vscode.ExtensionContext): void {
           'Şimdi Tara'
         );
         if (pick === 'Şimdi Tara') {
-          await scanCoverageCommand();
+          await runScanCommand();
         }
         return;
       }
@@ -428,30 +489,74 @@ export function activate(context: vscode.ExtensionContext): void {
       );
       return;
     }
-    await runTestGeneration(gap, ruleSet, testFlowDeps);
+    const id = gapId(gap);
+    const outcome = await runTestGeneration(gap, ruleSet, testFlowDeps);
+    if (outcome === 'applied') {
+      CoveragePanel.postOutcome(id, 'applied', `Test yazıldı: ${gap.testPath}`);
+    } else if (outcome === 'rejected') {
+      CoveragePanel.postOutcome(id, 'rejected');
+    } else if (outcome !== 'noop') {
+      CoveragePanel.postOutcome(id, 'error');
+    }
   };
 
   context.subscriptions.push(
     channel,
     vscode.window.registerTreeDataProvider('codeHealthFindings', tree),
+    vscode.window.registerTreeDataProvider('codeHealthCoverage', coverageTree),
     vscode.workspace.registerTextDocumentContentProvider(PreviewContentProvider.scheme, previewProvider)
   );
 
   void store.isSonarComplete().then((complete) => tree.setConfigured(complete));
 
-  const openConfig = (): void => {
-    ConfigPanel.show({
-      store,
-      extensionUri: context.extensionUri,
-      onSaved: () => {
-        void store.isSonarComplete().then((complete) => {
-          tree.setConfigured(complete);
-          if (complete) {
-            void refresh();
+  const openConfig = (focus?: 'sonar' | 'llm' | 'rules'): void => {
+    ConfigPanel.show(
+      {
+        store,
+        extensionUri: context.extensionUri,
+        loadRules,
+        createSampleRules: () => createSampleRulesCommand(),
+        onSaved: (target) => {
+          if (target === 'llm') {
+            gatewayCache = undefined;
+            if (coverage) {
+              void publishCoverage(coverage);
+            }
+            return;
           }
-        });
+          void store.isSonarComplete().then((complete) => {
+            tree.setConfigured(complete);
+            if (complete) {
+              void refresh();
+            }
+          });
+        }
+      },
+      focus
+    );
+  };
+
+  /** Örnek kural setini kopyalar ve açık kurulum panelini tazeler. */
+  const createSampleRulesCommand = async (): Promise<void> => {
+    const root = workspaceRoot();
+    if (!root) {
+      void vscode.window.showWarningMessage('Kural seti oluşturmak için bir klasör/workspace açık olmalı.');
+      return;
+    }
+    try {
+      const created = await createSampleRuleSet(context.extensionUri, root, store.getSettings().rulesDir);
+      if (created) {
+        const loaded = await loadRules();
+        ConfigPanel.refreshRules();
+        void vscode.window.showInformationMessage(
+          `Örnek kural seti hazır. Şu an ${loaded.ruleSets.length} kural seti etkin.`
+        );
       }
-    });
+    } catch (err) {
+      void vscode.window.showErrorMessage(
+        'Kural seti oluşturulamadı: ' + (err instanceof Error ? err.message : String(err))
+      );
+    }
   };
 
   const refresh = async (): Promise<void> => {
@@ -659,7 +764,9 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('code-health.configure', openConfig),
+    buildChannel,
+    vscode.commands.registerCommand('code-health.configure', () => openConfig()),
+    vscode.commands.registerCommand('code-health.configureLlm', () => openConfig('llm')),
     vscode.commands.registerCommand('code-health.refresh', () => void refresh()),
     vscode.commands.registerCommand('code-health.openFinding', (issue: SonarIssue) => {
       if (isSonarIssue(issue)) {
@@ -686,30 +793,17 @@ export function activate(context: vscode.ExtensionContext): void {
       gatewayCache = undefined;
       void vscode.window.showInformationMessage('Kod Sağlığı: kayıtlı local LLM API anahtarı silindi.');
     }),
-    vscode.commands.registerCommand('code-health.scanCoverage', () => void scanCoverageCommand()),
+    vscode.commands.registerCommand('code-health.scanCoverage', () => void runScanCommand()),
+    vscode.commands.registerCommand('code-health.showCoverage', () => void openCoveragePanel()),
     vscode.commands.registerCommand('code-health.generateTest', (node: unknown) =>
       void generateTestCommand(node)
     ),
-    vscode.commands.registerCommand('code-health.createSampleRules', async () => {
-      const root = workspaceRoot();
-      if (!root) {
-        void vscode.window.showWarningMessage('Kural seti oluşturmak için bir klasör/workspace açık olmalı.');
-        return;
-      }
-      try {
-        const created = await createSampleRuleSet(context.extensionUri, root, store.getSettings().rulesDir);
-        if (created) {
-          const loaded = await loadRules();
-          void vscode.window.showInformationMessage(
-            `Örnek kural seti hazır. Şu an ${loaded.ruleSets.length} kural seti etkin.`
-          );
-        }
-      } catch (err) {
-        void vscode.window.showErrorMessage(
-          'Kural seti oluşturulamadı: ' + (err instanceof Error ? err.message : String(err))
-        );
-      }
-    })
+    vscode.commands.registerCommand('code-health.openGapSource', (node: unknown) => {
+      const gap = extractGap(node);
+      const line = node && typeof node === 'object' && 'line' in node ? (node as { line?: number }).line : undefined;
+      void openGapFile(gap, 'source', line);
+    }),
+    vscode.commands.registerCommand('code-health.createSampleRules', () => void createSampleRulesCommand())
   );
 }
 

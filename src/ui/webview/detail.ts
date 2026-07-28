@@ -1,4 +1,6 @@
 import type { DetailFromWebview, DetailToWebview, FindingView } from '../messages';
+import { badge, box, button, el, pageHeader, spinner, statusBar, text } from './dom';
+import { icon } from './icons';
 
 declare function acquireVsCodeApi(): {
   postMessage(msg: DetailFromWebview): void;
@@ -7,19 +9,10 @@ declare function acquireVsCodeApi(): {
 };
 
 const vscode = acquireVsCodeApi();
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string> = {}
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    node.setAttribute(k, v);
-  }
-  return node;
-}
-
 const root = document.getElementById('root') as HTMLElement;
+
+const busy = spinner('Çözüm üretiliyor…');
+const status = statusBar();
 
 /** Sanitize edilmiş HTML'i, script çalıştırmadan (DOMParser + DOM ekleme) gösterir. */
 function renderDescription(container: HTMLElement, sanitizedHtml: string): void {
@@ -27,93 +20,75 @@ function renderDescription(container: HTMLElement, sanitizedHtml: string): void 
   container.replaceChildren(...Array.from(parsed.body.childNodes));
 }
 
-let busyEl: HTMLElement | undefined;
-let statusEl: HTMLElement | undefined;
+function severityTone(severity: FindingView['severity']): 'danger' | 'warn' | 'info' {
+  switch (severity) {
+    case 'BLOCKER':
+    case 'CRITICAL':
+      return 'danger';
+    case 'MAJOR':
+      return 'warn';
+    default:
+      return 'info';
+  }
+}
 
 function render(view: FindingView): void {
   root.replaceChildren();
-  const container = el('div', { class: 'container' });
+  const container = box('container');
 
-  // Header
-  const header = el('div', { class: 'header' });
-  const headBox = el('div');
-  const title = el('h1');
-  title.textContent = view.ruleName;
-  const sub = el('div', { class: 'subtitle' });
-  sub.textContent = view.ruleKey;
-  headBox.append(title, sub);
-  header.append(headBox);
+  const providerBadge = view.provider.available
+    ? badge('ok', view.provider.label, view.provider.id === 'copilot' ? 'copilot' : 'server')
+    : badge('warn', view.provider.label + ' · kapalı', 'warning');
+  container.append(pageHeader('target', view.ruleName, view.ruleKey, [providerBadge]));
 
-  // Badges
-  const badges = el('div', { class: 'badges' });
-  const sevBadge = el('span', { class: 'badge sev-' + view.severity });
-  sevBadge.textContent = view.severity;
-  const typeBadge = el('span', { class: 'badge type' });
-  typeBadge.textContent = view.issueType.replace('_', ' ');
-  badges.append(sevBadge, typeBadge);
+  const card = box('card');
+  const badges = box('badges');
+  badges.append(
+    badge(severityTone(view.severity), view.severity),
+    badge('neutral', view.issueType.replace('_', ' '))
+  );
+  card.append(badges);
 
-  // Card
-  const card = el('div', { class: 'card' });
-
-  const location = el('a', { class: 'location', role: 'button', tabindex: '0' });
-  location.textContent = view.filePath + (view.line ? ':' + view.line : '');
+  const location = el('button', { class: 'location', type: 'button' });
+  location.append(icon('file'), document.createTextNode(view.filePath + (view.line ? ':' + view.line : '')));
   location.addEventListener('click', () => vscode.postMessage({ type: 'openLocation' }));
+  card.append(location);
 
-  const message = el('div', { class: 'message' });
+  const message = box('message');
   message.textContent = view.message;
+  card.append(message);
 
-  const description = el('div', { class: 'description' });
+  const description = box('description');
   renderDescription(description, view.descriptionHtml);
+  card.append(description);
+  container.append(card);
 
-  card.append(badges, location, message, description);
-
-  // Actions
-  const actions = el('div', { class: 'actions' });
-  const fixBtn = el('button', { class: 'primary' });
-  fixBtn.textContent = `Çöz (${view.provider.label})`;
-  fixBtn.addEventListener('click', () => vscode.postMessage({ type: 'fix' }));
-  const fixAllBtn = el('button', { class: 'secondary' });
-  fixAllBtn.textContent = 'Tümünü Çöz';
-  fixAllBtn.addEventListener('click', () => vscode.postMessage({ type: 'fixAll' }));
+  const actions = box('actions');
+  const fixBtn = button('primary', 'Bu Bulguyu Çöz', () => vscode.postMessage({ type: 'fix' }), { icon: 'sparkle' });
+  fixBtn.disabled = !view.provider.available;
+  const fixAllBtn = button('secondary', 'Tümünü Çöz', () => vscode.postMessage({ type: 'fixAll' }), { icon: 'play' });
+  fixAllBtn.disabled = !view.provider.available;
   actions.append(fixBtn, fixAllBtn);
+  container.append(actions);
 
   if (!view.provider.available) {
-    const note = el('div', { class: 'status show info' });
-    note.textContent =
-      `${view.provider.label} şu anda kullanılamıyor; bulguyu görüntüleyip manuel çözebilirsiniz. ` +
-      (view.provider.hint ?? '');
-    card.append(note);
+    const warn = statusBar();
+    warn.set(
+      'warn',
+      `${view.provider.label} şu anda kullanılamıyor; bulguyu görüntüleyip manuel çözebilirsiniz. ${view.provider.hint ?? ''}`.trim()
+    );
+    container.append(warn.node);
   }
 
-  const spinner = el('div', { class: 'spinner' });
-  spinner.textContent = `${view.provider.label} ile çözüm üretiliyor…`;
-  busyEl = spinner;
+  busy.set(false, `${view.provider.label} ile çözüm üretiliyor…`);
+  status.clear();
+  container.append(busy.node, status.node);
 
-  const status = el('div', { class: 'status' });
-  statusEl = status;
+  const footer = text('card-note', 'Önerilen değişiklik önce diff olarak gösterilir; onaylamadan hiçbir dosya yazılmaz.');
+  footer.style.marginTop = '16px';
+  container.append(footer);
 
-  container.append(header, card, actions, spinner, status);
   root.append(container);
-}
-
-function setBusy(busy: boolean): void {
-  if (busyEl) {
-    busyEl.classList.toggle('show', busy);
-  }
-}
-
-function showOutcome(status: 'applied' | 'rejected' | 'error', detail?: string): void {
-  if (!statusEl) {
-    return;
-  }
-  const map = {
-    applied: { kind: 'ok', text: 'Değişiklik uygulandı.' },
-    rejected: { kind: 'info', text: 'Değişiklik reddedildi.' },
-    error: { kind: 'error', text: 'Hata: ' + (detail ?? 'bilinmeyen') }
-  } as const;
-  const entry = map[status];
-  statusEl.className = 'status show ' + entry.kind;
-  statusEl.textContent = detail && status !== 'error' ? entry.text + ' ' + detail : entry.text;
 }
 
 window.addEventListener('message', (event: MessageEvent<DetailToWebview>) => {
@@ -123,11 +98,17 @@ window.addEventListener('message', (event: MessageEvent<DetailToWebview>) => {
       render(msg.view);
       break;
     case 'busy':
-      setBusy(msg.busy);
+      busy.set(msg.busy);
       break;
     case 'fixOutcome':
-      setBusy(false);
-      showOutcome(msg.status, msg.detail);
+      busy.set(false);
+      if (msg.status === 'applied') {
+        status.set('ok', 'Değişiklik uygulandı.' + (msg.detail ? ' ' + msg.detail : ''));
+      } else if (msg.status === 'rejected') {
+        status.set('info', 'Değişiklik reddedildi; dosyaya hiçbir şey yazılmadı.');
+      } else {
+        status.set('danger', msg.detail ?? 'Bilinmeyen hata.');
+      }
       break;
   }
 });
