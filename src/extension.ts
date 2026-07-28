@@ -440,6 +440,7 @@ export function activate(context: vscode.ExtensionContext): void {
     targetUri: workspaceFileUri,
     maxContextChars: () => store.getSettings().testGenMaxContextChars,
     maxRepairAttempts: () => store.getSettings().testGenMaxRepairAttempts,
+    // runScan sonucu zaten ağaca ve panele yayar; ayrıca onRescanned vermeye gerek yok.
     rescan: async (cancel?: CancelSignal): Promise<CoverageScanResult> =>
       await vscode.window.withProgress(
         {
@@ -448,10 +449,7 @@ export function activate(context: vscode.ExtensionContext): void {
           cancellable: true
         },
         (_progress, token) => runScan(true, cancel ?? toCancelSignal(token))
-      ),
-    onRescanned: (result: CoverageScanResult) => {
-      void publishCoverage(result);
-    }
+      )
   };
 
   const generateTestCommand = async (input?: unknown): Promise<void> => {
