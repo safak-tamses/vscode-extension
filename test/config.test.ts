@@ -17,6 +17,7 @@ function defaults(): CodeHealthSettings {
     snippetPadding: 8,
     rulesDir: '.code-health/rules',
     mavenPath: '',
+    javaHome: '',
     llmProvider: 'copilot',
     copilotVendor: 'copilot',
     copilotFamily: '',

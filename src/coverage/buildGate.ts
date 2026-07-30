@@ -20,14 +20,15 @@ export interface ConsentResult {
  * Komut metni kural dosyasından (yani workspace içeriğinden) geldiği için keyfi kod
  * yürütme yüzeyidir. Üç kapı uygulanır:
  *  1. Workspace Trust zorunlu — güvenilmeyen klasörde asla çalıştırılmaz.
- *  2. İlk çalıştırmada komut ve dizin gösterilerek modal onay alınır.
- *  3. Onay komut metnine bağlı saklanır; komut değişirse yeniden sorulur.
+ *  2. İlk çalıştırmada komut, dizin ve (varsa) JDK kökü gösterilerek modal onay alınır.
+ *  3. Onay komut metnine VE JDK köküne bağlı saklanır; biri değişirse yeniden sorulur.
  */
 export async function ensureBuildConsent(
   command: string,
   cwd: string,
   displayCwd: string,
-  state: ConsentStore
+  state: ConsentStore,
+  javaHome?: string
 ): Promise<ConsentResult> {
   if (!vscode.workspace.isTrusted) {
     return {
@@ -39,7 +40,9 @@ export async function ensureBuildConsent(
   }
 
   const key = KEY_PREFIX + cwd;
-  if (state.get(key) === command) {
+  // Onay değeri komutu ve JDK kökünü birlikte kapsar; ikisinden biri değişirse yeniden sorulur.
+  const approved = javaHome ? `${command}\nJAVA_HOME=${javaHome}` : command;
+  if (state.get(key) === approved) {
     return { allowed: true };
   }
 
@@ -49,8 +52,9 @@ export async function ensureBuildConsent(
       modal: true,
       detail:
         `Komut:  ${command}\n` +
-        `Dizin:  ${displayCwd || '(workspace kökü)'}\n\n` +
-        'Bu komut kural dosyanızdan okunur ve kabuk üzerinde çalıştırılır. ' +
+        `Dizin:  ${displayCwd || '(workspace kökü)'}\n` +
+        (javaHome ? `JAVA_HOME:  ${javaHome}\n` : '') +
+        '\nBu komut kural dosyanızdan okunur ve kabuk üzerinde çalıştırılır. ' +
         'Yalnızca içeriğine güvendiğiniz depolarda onaylayın.'
     },
     'Çalıştır ve Bir Daha Sorma',
@@ -58,7 +62,7 @@ export async function ensureBuildConsent(
   );
 
   if (choice === 'Çalıştır ve Bir Daha Sorma') {
-    await state.update(key, command);
+    await state.update(key, approved);
     return { allowed: true };
   }
   if (choice === 'Yalnızca Bu Kez') {

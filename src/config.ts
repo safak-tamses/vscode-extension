@@ -28,6 +28,11 @@ export interface CodeHealthSettings {
    * Boşsa derleme komutu olduğu gibi çalışır ve `mvn` PATH üzerinden bulunur.
    */
   mavenPath: string;
+  /**
+   * Derlemede kullanılacak JDK kökü. Boşsa ortamın JAVA_HOME/PATH değerleri olduğu gibi
+   * kullanılır; doluysa derleme süreci JAVA_HOME bu yola ayarlanmış olarak başlatılır.
+   */
+  javaHome: string;
 
   // --- Model sağlayıcı ---
   llmProvider: LlmProviderId;

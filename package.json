@@ -216,6 +216,11 @@
           "default": "",
           "markdownDescription": "İsteğe bağlı Maven konumu. Boşsa kural setindeki derleme komutu olduğu gibi çalışır ve `mvn` PATH üzerinden bulunur. Maven PATH'te değilse Maven kökünü (`C:\\apache-maven-3.9.6`), `bin` dizinini ya da doğrudan çalıştırılabilir dosyayı (`C:\\apache-maven-3.9.6\\bin\\mvn.cmd`) verin; komutun başındaki `mvn` bu yolla değiştirilir."
         },
+        "codeHealth.javaHome": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "İsteğe bağlı JDK kökü. `mvn clean install` derleme yaptığı için JDK gerekir (JRE yetmez). Boşsa ortamın `JAVA_HOME`/`PATH` değerleri kullanılır. Doluysa derleme süreci `JAVA_HOME` bu yola ayarlanmış ve `<kök>/bin` PATH'in başına eklenmiş olarak başlatılır. JDK kökü, `bin` dizini ya da `java` çalıştırılabilir dosyası verilebilir."
+        },
         "codeHealth.llm.provider": {
           "type": "string",
           "enum": [

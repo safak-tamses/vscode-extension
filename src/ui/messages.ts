@@ -53,13 +53,13 @@ export interface RuleFileView {
   summary?: string;
 }
 
-/** Maven konumu ayarının durumu (Test Kuralları sekmesi). */
-export interface MavenView {
-  /** Ayardaki ham değer; boşsa PATH kullanılır. */
+/** Derleme araç zinciri yolu (Maven / JDK) — Test Kuralları sekmesinde gösterilir. */
+export interface ToolPathView {
+  /** Ayardaki ham değer; boşsa ortamın varsayılanı kullanılır. */
   path: string;
-  /** Ayar boş ya da geçerli bir çalıştırılabilire çözülüyor mu? */
+  /** Ayar boş ya da geçerli bir konuma çözülüyor mu? */
   ok: boolean;
-  /** Kullanıcıya gösterilecek açıklama (çözülen dosya yolu ya da hata). */
+  /** Kullanıcıya gösterilecek açıklama (çözülen yol ya da hata). */
   detail: string;
 }
 
@@ -68,7 +68,8 @@ export interface RulesView {
   dir: string;
   files: RuleFileView[];
   activeCount: number;
-  maven: MavenView;
+  maven: ToolPathView;
+  java: ToolPathView;
 }
 
 export type ConfigTarget = 'sonar' | 'llm' | 'rules';
@@ -88,8 +89,8 @@ export type ConfigToWebview =
   | { type: 'busy'; target: ConfigTarget; busy: boolean }
   /** Klasör seçme diyalogundan dönen proje kökü. */
   | { type: 'projectRoot'; value: string }
-  /** Maven konumu değişti (seçim ya da kaydetme sonrası). */
-  | { type: 'maven'; maven: MavenView };
+  /** Maven/JDK konumu değişti (seçim ya da kaydetme sonrası). */
+  | { type: 'toolPaths'; maven: ToolPathView; java: ToolPathView };
 
 export type ConfigFromWebview =
   | { type: 'ready' }
@@ -101,6 +102,8 @@ export type ConfigFromWebview =
   | { type: 'browseProjectRoot' }
   | { type: 'browseMavenPath' }
   | { type: 'saveMavenPath'; value: string }
+  | { type: 'browseJavaHome' }
+  | { type: 'saveJavaHome'; value: string }
   | { type: 'reloadRules' }
   | { type: 'createSampleRules' }
   | { type: 'openRuleFile'; path: string };

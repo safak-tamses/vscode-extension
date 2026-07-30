@@ -2,10 +2,10 @@ import type {
   ConfigFromWebview,
   ConfigToWebview,
   LlmFormState,
-  MavenView,
   RuleFileView,
   RulesView,
-  SonarFormState
+  SonarFormState,
+  ToolPathView
 } from '../messages';
 import { badge, box, button, el, field, pageHeader, statusBar, tabs, text } from './dom';
 import { icon } from './icons';
@@ -258,32 +258,37 @@ const rulesBody = box('');
 let rulesBadge: HTMLElement | undefined;
 
 const mavenPath = el('input', { type: 'text', placeholder: 'boş = mvn, PATH üzerinden' });
+const javaHome = el('input', { type: 'text', placeholder: 'boş = ortamın JAVA_HOME değeri' });
 const mavenStatus = statusBar();
-const mavenBody = box('');
+const javaStatus = statusBar();
+const toolsBody = box('');
 
 function rulesPanel(): HTMLElement {
   const panel = box('');
-  panel.append(mavenBody, rulesBody);
+  panel.append(toolsBody, rulesBody);
   return panel;
 }
 
 /**
- * Maven konumu kartı. Varsayılan davranış komutu olduğu gibi çalıştırmaktır (`mvn clean install`);
- * bu alan yalnızca Maven PATH'te olmayan makineler için gerekir.
+ * Derleme araçları kartı. İkisi de isteğe bağlıdır: boş bırakılınca komut olduğu gibi çalışır,
+ * `mvn` PATH'ten bulunur ve ortamın JAVA_HOME değeri kullanılır. Alanlar yalnızca araçların
+ * PATH'te olmadığı makineler için gereklidir.
  */
-function renderMaven(maven: MavenView): void {
-  mavenBody.replaceChildren();
+function renderTools(maven: ToolPathView, java: ToolPathView): void {
+  toolsBody.replaceChildren();
   mavenPath.value = maven.path;
+  javaHome.value = java.path;
 
   const card = box('card');
   const head = box('card-head');
-  head.append(box('grow', el('h2', {}, [icon('play'), document.createTextNode('Maven Konumu')])));
+  head.append(box('grow', el('h2', {}, [icon('play'), document.createTextNode('Derleme Araçları')])));
   card.append(
     head,
     text(
       'card-note',
-      'İsteğe bağlıdır. Boş bırakılırsa kural setindeki derleme komutu olduğu gibi çalışır ve ' +
-        'mvn PATH üzerinden bulunur. Maven PATH’te değilse kurulum dizinini ya da mvn dosyasını verin.'
+      'Her ikisi de isteğe bağlıdır. Boş bırakılırsa kural setindeki komut olduğu gibi çalışır: ' +
+        'mvn PATH üzerinden bulunur ve ortamın JAVA_HOME değeri kullanılır. Araçlar PATH’te ' +
+        'değilse konumlarını burada belirtin.'
     ),
     field('Maven kökü, bin dizini veya mvn dosyası', mavenPath, {
       id: 'f-maven-path',
@@ -291,21 +296,46 @@ function renderMaven(maven: MavenView): void {
     }),
     box(
       'actions',
-      button('secondary', 'Konum Seç…', () => vscode.postMessage({ type: 'browseMavenPath' }), {
-        icon: 'folder'
+      button('secondary', 'Maven Konumu Seç…', () => vscode.postMessage({ type: 'browseMavenPath' }), {
+        icon: 'folder',
+        tiny: true
       }),
-      button('primary', 'Kaydet', () => vscode.postMessage({ type: 'saveMavenPath', value: mavenPath.value }), {
-        icon: 'check'
-      })
+      button(
+        'primary',
+        'Maven Yolunu Kaydet',
+        () => vscode.postMessage({ type: 'saveMavenPath', value: mavenPath.value }),
+        { icon: 'check', tiny: true }
+      )
     ),
-    mavenStatus.node
+    mavenStatus.node,
+    field('JDK kökü (JAVA_HOME), bin dizini veya java dosyası', javaHome, {
+      id: 'f-java-home',
+      hint:
+        'mvn clean install derleme yapar; JDK gerekir (JRE yetmez). ' +
+        'Örn. C:\\jdk-17  ·  /Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home'
+    }),
+    box(
+      'actions',
+      button('secondary', 'JDK Kökü Seç…', () => vscode.postMessage({ type: 'browseJavaHome' }), {
+        icon: 'folder',
+        tiny: true
+      }),
+      button(
+        'primary',
+        'JDK Yolunu Kaydet',
+        () => vscode.postMessage({ type: 'saveJavaHome', value: javaHome.value }),
+        { icon: 'check', tiny: true }
+      )
+    ),
+    javaStatus.node
   );
-  mavenBody.append(card);
+  toolsBody.append(card);
   mavenStatus.set(maven.ok ? (maven.path ? 'ok' : 'info') : 'danger', maven.detail);
+  javaStatus.set(java.ok ? (java.path ? 'ok' : 'info') : 'danger', java.detail);
 }
 
 function renderRules(rules: RulesView): void {
-  renderMaven(rules.maven);
+  renderTools(rules.maven, rules.java);
   rulesBody.replaceChildren();
 
   const card = box('card');
@@ -507,8 +537,8 @@ window.addEventListener('message', (event: MessageEvent<ConfigToWebview>) => {
       projectRoot.value = msg.value;
       sonarStatus.set('info', 'Klasör seçildi. Kalıcı olması için Kaydet’e basın.');
       break;
-    case 'maven':
-      renderMaven(msg.maven);
+    case 'toolPaths':
+      renderTools(msg.maven, msg.java);
       break;
     case 'busy':
       setBusy(msg.target, msg.busy);

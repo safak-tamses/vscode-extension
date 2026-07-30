@@ -5,15 +5,16 @@ import type {
   ConfigFromWebview,
   ConfigToWebview,
   LlmFormState,
-  MavenView,
   RuleFileView,
   RulesView,
-  SonarFormState
+  SonarFormState,
+  ToolPathView
 } from './messages';
 import { SonarClient } from '../sonar/client';
 import { isAbsolutePath, relativeToRoot } from '../sonar/locate';
 import { mavenExecutableCandidates } from '../coverage/maven';
 import type { Platform } from '../coverage/maven';
+import { javaExecutableRelPath, javaHomeCandidates } from '../coverage/java';
 import { FetchHttpClient } from '../http';
 import { CopilotGateway } from '../llm/copilotGateway';
 import { LocalLlmGateway } from '../llm/localGateway';
@@ -135,11 +136,18 @@ export class ConfigPanel {
         await this.browseProjectRoot();
         break;
       case 'browseMavenPath':
-        await this.browseMavenPath();
+        await this.browseToolPath('maven');
         break;
       case 'saveMavenPath':
         await this.deps.store.saveSettings({ mavenPath: msg.value.trim() });
-        this.post({ type: 'maven', maven: await this.buildMavenView() });
+        await this.postToolPaths();
+        break;
+      case 'browseJavaHome':
+        await this.browseToolPath('java');
+        break;
+      case 'saveJavaHome':
+        await this.deps.store.saveSettings({ javaHome: msg.value.trim() });
+        await this.postToolPaths();
         break;
       case 'clearLlmKey':
         await this.deps.store.clearLocalApiKey();
@@ -225,54 +233,97 @@ export class ConfigPanel {
       dir: this.deps.store.getSettings().rulesDir,
       files,
       activeCount: loaded.ruleSets.length,
-      maven: await this.buildMavenView()
+      maven: await this.buildMavenView(),
+      java: await this.buildJavaView()
     };
   }
 
+  private async postToolPaths(): Promise<void> {
+    this.post({
+      type: 'toolPaths',
+      maven: await this.buildMavenView(),
+      java: await this.buildJavaView()
+    });
+  }
+
+  private async isFile(path: string): Promise<boolean> {
+    try {
+      return (await vscode.workspace.fs.stat(vscode.Uri.file(path))).type === vscode.FileType.File;
+    } catch {
+      return false;
+    }
+  }
+
   /** Ayardaki Maven yolunu gerçek bir çalıştırılabilire çözmeye çalışır ve durumu özetler. */
-  private async buildMavenView(): Promise<MavenView> {
+  private async buildMavenView(): Promise<ToolPathView> {
     const path = this.deps.store.getSettings().mavenPath.trim();
     if (path === '') {
       return {
         path: '',
         ok: true,
-        detail: 'Ayarlanmadı: derleme komutu olduğu gibi çalışır ve `mvn` PATH üzerinden bulunur.'
+        detail: 'Ayarlanmadı: derleme komutu olduğu gibi çalışır ve mvn PATH üzerinden bulunur.'
       };
     }
     for (const candidate of mavenExecutableCandidates(path, currentPlatform())) {
-      try {
-        const stat = await vscode.workspace.fs.stat(vscode.Uri.file(candidate));
-        if (stat.type === vscode.FileType.File) {
-          return { path, ok: true, detail: `Bulundu: ${candidate}` };
-        }
-      } catch {
-        // sonraki adayı dene
+      if (await this.isFile(candidate)) {
+        return { path, ok: true, detail: `Bulundu: ${candidate}` };
       }
     }
     return {
       path,
       ok: false,
       detail:
-        `Bu yolda Maven çalıştırılabiliri bulunamadı. Maven kökünü (…/apache-maven-3.9.6), ` +
+        'Bu yolda Maven çalıştırılabiliri bulunamadı. Maven kökünü (…/apache-maven-3.9.6), ' +
         `bin dizinini ya da doğrudan ${currentPlatform() === 'win32' ? 'mvn.cmd' : 'mvn'} dosyasını verin.`
     };
   }
 
-  /** Maven dizinini/dosyasını seçtirir ve doğrudan kaydeder. */
-  private async browseMavenPath(): Promise<void> {
+  /** Ayardaki JDK yolunu, içinde `bin/java` bulunan bir köke çözmeye çalışır. */
+  private async buildJavaView(): Promise<ToolPathView> {
+    const platform = currentPlatform();
+    const path = this.deps.store.getSettings().javaHome.trim();
+    if (path === '') {
+      return {
+        path: '',
+        ok: true,
+        detail: 'Ayarlanmadı: derleme, ortamın JAVA_HOME ve PATH değerleriyle çalışır.'
+      };
+    }
+    const sep = platform === 'win32' ? '\\' : '/';
+    for (const candidate of javaHomeCandidates(path, platform)) {
+      if (await this.isFile(`${candidate}${sep}${javaExecutableRelPath(platform)}`)) {
+        return { path, ok: true, detail: `JAVA_HOME=${candidate}` };
+      }
+    }
+    return {
+      path,
+      ok: false,
+      detail:
+        `Bu yolda ${javaExecutableRelPath(platform)} bulunamadı. JDK kökünü, bin dizinini ya da ` +
+        'java çalıştırılabilir dosyasını verin (JRE değil, JDK gerekir).'
+    };
+  }
+
+  /** Maven/JDK konumunu seçtirir ve doğrudan kaydeder. */
+  private async browseToolPath(target: 'maven' | 'java'): Promise<void> {
     const picked = await vscode.window.showOpenDialog({
       canSelectFolders: true,
       canSelectFiles: true,
       canSelectMany: false,
-      openLabel: 'Maven Konumu Olarak Seç',
-      title: 'Maven kökü, bin dizini ya da mvn çalıştırılabilir dosyası'
+      openLabel: target === 'maven' ? 'Maven Konumu Olarak Seç' : 'JDK Kökü Olarak Seç',
+      title:
+        target === 'maven'
+          ? 'Maven kökü, bin dizini ya da mvn çalıştırılabilir dosyası'
+          : 'JDK kökü, bin dizini ya da java çalıştırılabilir dosyası'
     });
     const chosen = picked?.[0];
     if (!chosen) {
       return;
     }
-    await this.deps.store.saveSettings({ mavenPath: chosen.fsPath });
-    this.post({ type: 'maven', maven: await this.buildMavenView() });
+    await this.deps.store.saveSettings(
+      target === 'maven' ? { mavenPath: chosen.fsPath } : { javaHome: chosen.fsPath }
+    );
+    await this.postToolPaths();
   }
 
   private async testSonar(form: SonarFormState, token: string): Promise<{ ok: boolean; detail?: string }> {

@@ -88,7 +88,27 @@ Notlar:
 Branch ve Token'ı girin → **Bağlantıyı Test Et** → **Kaydet**.
 Panel başlığındaki ⟳ ile bulguları tarayın.
 
-> Ayarlar workspace `settings.json`'a (`codeHealth.*`) yazılır; **token ve API anahtarı asla** oraya yazılmaz.
+> Ayarlar **kullanıcı (global) `settings.json`**'a (`codeHealth.*`) yazılır: kurulum bir kez yapılır ve
+> tüm workspace'lerde geçerli kalır. **Token ve API anahtarı asla** oraya yazılmaz — onlar SecretStorage'da
+> tutulur ve zaten globaldir. Bir anahtarın workspace kapsamında değeri varsa (proje bazlı override)
+> o değer silinmez, kaydettiğiniz değerle eşitlenir.
+
+### Proje Kök Dizini (isteğe bağlı)
+
+Sonar bulgusundaki dosya yolu, SonarQube proje köküne göredir; bu kök açık workspace klasörüyle
+aynı olmayabilir. Farklıysa **Kurulum → Bağlantı → Proje Kök Dizini** alanını doldurun
+(**Klasör Seç…** ile de seçebilirsiniz):
+
+- Monorepo alt klasörü için **göreli** yol — `backend`
+- Workspace dışındaki bir proje için **mutlak** yol — `/Users/ben/projeler/backend`
+
+Boşsa açık workspace klasörleri kullanılır. Bulguya çift tıklandığında dosya sırasıyla proje kök
+dizini → workspace klasörleri → dosya adına göre workspace araması ile aranır. Bulunamazsa hata
+mesajı denenen kökleri gösterir.
+
+> Kapsam taraması (JaCoCo) yalnızca **açık workspace klasörlerini** tarar. Proje kökünü workspace
+> dışında bir mutlak yola ayarlarsanız Sonar tarafı çalışır ama kapsam taraması boş döner; kapsam
+> için klasörün VS Code'da açık olması gerekir.
 
 ---
 
@@ -200,6 +220,22 @@ Gönderilen dosyanın tamamı için: `resources/rules/java-spring-unit-tests.md`
 - **Derle ve tara** — kural setindeki komutu çalıştırıp taze rapor üretir (ilk seferde komut onayı istenir).
 - **Var olan raporu oku** — daha önce üretilmiş `jacoco.xml` dosyalarını okur (hızlı).
 
+### Derleme araçları (isteğe bağlı)
+
+**Kurulum → Test Kuralları** sekmesinin başındaki iki alan da isteğe bağlıdır. Boş bırakılırsa
+kural setindeki komut olduğu gibi çalışır: `mvn` PATH üzerinden bulunur ve ortamın `JAVA_HOME`
+değeri kullanılır.
+
+| Alan | Ne zaman gerekir | Kabul edilen değer |
+|---|---|---|
+| **Maven konumu** | `mvn` PATH'te değilse (kurumsal makineler) | Maven kökü, `bin` dizini ya da `mvn.cmd`/`mvn` dosyası |
+| **JDK kökü** | Derleme yanlış Java sürümüyle çalışıyorsa | JDK kökü, `bin` dizini ya da `java` dosyası |
+
+Maven konumu verilirse komutun başındaki `mvn` belirteci tam yolla değiştirilir (boşluklu yollar
+tırnaklanır); `./mvnw`, `gradle` gibi komutlara dokunulmaz. JDK kökü verilirse derleme süreci
+`JAVA_HOME` bu yola ayarlanmış ve `<kök>/bin` PATH'in başına eklenmiş olarak başlatılır.
+Her ikisi de onay diyalogunda gösterilir ve **değişirse onay yeniden sorulur**.
+
 Sonra **Test Kapsamı** panelinde veya ağaçta bir sınıf seçip **Test Üret** deyin. Akış:
 
 ```
@@ -256,8 +292,11 @@ kaynak + mevcut test + kapsanmayan metot/satır + kural gövdeniz
 | `authScheme` | `bearer` | `bearer` (10.x+) / `basic` (eski) |
 | `maxIssues` | `500` | Tek taramada azami bulgu |
 | `snippetPadding` | `8` | Fix bağlamı için satır payı |
+| `projectRoot` | `""` | Bulgu yollarının göreli olduğu proje kökü (mutlak ya da workspace'e göreli) |
 | `auditLogPath` | `""` | Boşsa `<workspace>/.code-health/audit.log` |
 | `rulesDir` | `.code-health/rules` | Test kural setlerinin dizini |
+| `mavenPath` | `""` | Maven kökü/`bin`/`mvn` dosyası. Boşsa `mvn` PATH'ten bulunur |
+| `javaHome` | `""` | JDK kökü. Boşsa ortamın `JAVA_HOME`/`PATH` değerleri kullanılır |
 | `llm.provider` | `copilot` | `copilot` / `local` |
 | `llm.copilotVendor` · `llm.copilotFamily` | `copilot` · `""` | Copilot model seçimi |
 | `llm.local.protocol` | `openai` | `openai` / `ollama` |

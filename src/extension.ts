@@ -24,6 +24,7 @@ import type { ConsentStore } from './coverage/buildGate';
 import { SOURCE_EXCLUDE, discoverCoverage, findBuildRoot } from './coverage/discover';
 import { applyMavenPath, mavenExecutableCandidates, usesMaven } from './coverage/maven';
 import type { Platform } from './coverage/maven';
+import { javaExecutableRelPath, javaHomeCandidates, withJavaHome } from './coverage/java';
 import { describeReasons } from './coverage/gaps';
 import type { CoverageGap } from './coverage/gaps';
 import { formatBuilds, ruleSetFor, scanCoverage } from './coverage/service';
@@ -57,6 +58,7 @@ const SETTING_KEYS: { [K in keyof CodeHealthSettings]: string } = {
   snippetPadding: 'snippetPadding',
   rulesDir: 'rulesDir',
   mavenPath: 'mavenPath',
+  javaHome: 'javaHome',
   llmProvider: 'llm.provider',
   copilotVendor: 'llm.copilotVendor',
   copilotFamily: 'llm.copilotFamily',
@@ -88,6 +90,7 @@ class VscodeSettingsStore implements SettingsStore {
       snippetPadding: c.get<number>(SETTING_KEYS.snippetPadding, 8),
       rulesDir: c.get<string>(SETTING_KEYS.rulesDir, '.code-health/rules'),
       mavenPath: c.get<string>(SETTING_KEYS.mavenPath, ''),
+      javaHome: c.get<string>(SETTING_KEYS.javaHome, ''),
       llmProvider: c.get<'copilot' | 'local'>(SETTING_KEYS.llmProvider, 'copilot'),
       copilotVendor: c.get<string>(SETTING_KEYS.copilotVendor, '') || legacyVendor || 'copilot',
       copilotFamily: c.get<string>(SETTING_KEYS.copilotFamily, ''),
@@ -414,6 +417,40 @@ export function activate(context: vscode.ExtensionContext): void {
     return applyMavenPath(command, executable, platformKind());
   };
 
+  /** Ayardaki JDK yolunu, içinde gerçekten `bin/java` bulunan bir köke çözer. */
+  const resolveJavaHome = async (configured: string): Promise<string | undefined> => {
+    const platform = platformKind();
+    for (const candidate of javaHomeCandidates(configured, platform)) {
+      const exe = `${candidate}${platform === 'win32' ? '\\' : '/'}${javaExecutableRelPath(platform)}`;
+      if (await fileExists(vscode.Uri.file(exe))) {
+        return candidate;
+      }
+    }
+    return undefined;
+  };
+
+  /**
+   * Derleme sürecinin ortamı. JDK yolu ayarlıysa JAVA_HOME ayarlanır ve `<home>/bin` PATH'in
+   * başına eklenir; aksi halde undefined döner ve süreç eklentinin ortamını devralır.
+   */
+  const buildEnvironment = async (warn = false): Promise<NodeJS.ProcessEnv | undefined> => {
+    const configured = store.getSettings().javaHome.trim();
+    if (configured === '') {
+      return undefined;
+    }
+    const home = await resolveJavaHome(configured);
+    if (!home) {
+      if (warn) {
+        void vscode.window.showWarningMessage(
+          `JDK bulunamadı: ${configured}. Derleme ortamın JAVA_HOME değeriyle çalıştırılacak. ` +
+            'Kurulum ekranı › Test Kuralları sekmesinden yolu düzeltebilirsiniz.'
+        );
+      }
+      return undefined;
+    }
+    return withJavaHome(process.env, home, platformKind()) as NodeJS.ProcessEnv;
+  };
+
   const runBuildPort = async (
     ruleSet: TestRuleSet,
     cancel?: CancelSignal
@@ -437,17 +474,24 @@ export function activate(context: vscode.ExtensionContext): void {
       output: ''
     });
 
-    const consent = await ensureBuildConsent(command, cwd, buildRoot, consentStore);
+    const env = await buildEnvironment(true);
+    const javaHome = env?.JAVA_HOME;
+
+    const consent = await ensureBuildConsent(command, cwd, buildRoot, consentStore, javaHome);
     if (!consent.allowed) {
       return skipped(consent.reason ?? 'onay verilmedi');
     }
 
     buildChannel.show(true);
     buildChannel.appendLine(`\n$ ${command}      (${buildRoot || 'workspace kökü'})`);
+    if (javaHome) {
+      buildChannel.appendLine(`  JAVA_HOME=${javaHome}`);
+    }
     const result = await buildRunner.run(command, cwd, {
       timeoutSec: ruleSet.coverage.buildTimeoutSec,
       onOutput: (chunk) => buildChannel.append(chunk),
-      ...(cancel ? { cancel } : {})
+      ...(cancel ? { cancel } : {}),
+      ...(env ? { env } : {})
     });
     buildChannel.appendLine(
       `\n[kod-sağlığı] çıkış kodu ${result.code ?? '-'} · ${(result.durationMs / 1000).toFixed(1)} sn\n`
