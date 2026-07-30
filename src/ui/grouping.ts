@@ -55,7 +55,7 @@ export function groupFindings(issues: SonarIssue[]): ProjectNode[] {
   for (const [project, files] of byProject) {
     const fileNodes: FileNode[] = [];
     for (const [component, fileIssues] of files) {
-      fileNodes.push(buildFileNode(component, fileIssues));
+      fileNodes.push(buildFileNode(component, project, fileIssues));
     }
     fileNodes.sort((a, b) => a.path.localeCompare(b.path));
     const count = fileNodes.reduce((n, f) => n + f.count, 0);
@@ -65,7 +65,7 @@ export function groupFindings(issues: SonarIssue[]): ProjectNode[] {
   return projectNodes;
 }
 
-function buildFileNode(component: string, fileIssues: SonarIssue[]): FileNode {
+function buildFileNode(component: string, project: string, fileIssues: SonarIssue[]): FileNode {
   const bySeverity = new Map<Severity, SonarIssue[]>();
   for (const fi of fileIssues) {
     const list = bySeverity.get(fi.severity) ?? [];
@@ -82,6 +82,6 @@ function buildFileNode(component: string, fileIssues: SonarIssue[]): FileNode {
       children: list.map<IssueNode>((i) => ({ kind: 'issue', label: i.message, issue: i }))
     };
   });
-  const path = componentToPath(component);
+  const path = componentToPath(component, project);
   return { kind: 'file', label: path, path, component, count: fileIssues.length, children: severityNodes };
 }

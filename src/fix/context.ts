@@ -39,7 +39,7 @@ export function buildFixContext(
   const startLine = Math.max(1, issueStart - padding);
   const endLine = Math.min(lines.length, issueEnd + padding);
   const snippet = lines.slice(startLine - 1, endLine).join('\n');
-  const filePath = componentToPath(issue.component);
+  const filePath = componentToPath(issue.component, issue.project);
 
   const prompt = [
     'Sen kıdemli bir geliştiricisin. Aşağıdaki SonarQube bulgusunu düzelt.',

@@ -2,6 +2,7 @@ import type {
   ConfigFromWebview,
   ConfigToWebview,
   LlmFormState,
+  MavenView,
   RuleFileView,
   RulesView,
   SonarFormState
@@ -26,6 +27,11 @@ const branch = el('input', { type: 'text', placeholder: 'main (boş bırakılabi
 const authScheme = el('select');
 authScheme.append(new Option('Bearer (SonarQube 10.x+)', 'bearer'), new Option('Basic (eski sürümler)', 'basic'));
 const sonarToken = el('input', { type: 'password', placeholder: '••••••••  (gizli olarak saklanır)' });
+const projectRoot = el('input', { type: 'text', placeholder: 'boş = workspace kökü' });
+const browseRootBtn = button('secondary', 'Klasör Seç…', () => vscode.postMessage({ type: 'browseProjectRoot' }), {
+  icon: 'folder',
+  tiny: true
+});
 const sonarStatus = statusBar();
 const sonarTestBtn = button('secondary', 'Bağlantıyı Test Et', () => submitSonar('testSonar'), { icon: 'plug' });
 const sonarSaveBtn = button('primary', 'Kaydet', () => submitSonar('saveSonar'), { icon: 'check' });
@@ -53,6 +59,13 @@ function sonarPanel(): HTMLElement {
   card.append(
     row,
     field('Token', sonarToken, { id: 'f-token', hint: 'VS Code SecretStorage’da saklanır; koda/loga/ayar dosyasına yazılmaz.' }),
+    field('Proje Kök Dizini', projectRoot, {
+      id: 'f-project-root',
+      hint:
+        'Bulgudaki yolların göreli olduğu kök. Monorepo alt klasörü için göreli (backend), ' +
+        'workspace dışındaki bir proje için mutlak yol verin. Boşsa workspace klasörleri kullanılır.'
+    }),
+    box('actions tight', browseRootBtn),
     box('actions', sonarTestBtn, sonarSaveBtn),
     sonarStatus.node
   );
@@ -65,7 +78,8 @@ function readSonar(): SonarFormState {
     sonarUrl: sonarUrl.value.trim(),
     projectKey: parseProjectKey(projectKey.value.trim()),
     branch: branch.value.trim(),
-    authScheme: authScheme.value === 'basic' ? 'basic' : 'bearer'
+    authScheme: authScheme.value === 'basic' ? 'basic' : 'bearer',
+    projectRoot: projectRoot.value.trim()
   };
 }
 
@@ -243,13 +257,55 @@ function submitLlm(type: 'testLlm' | 'saveLlm'): void {
 const rulesBody = box('');
 let rulesBadge: HTMLElement | undefined;
 
+const mavenPath = el('input', { type: 'text', placeholder: 'boş = mvn, PATH üzerinden' });
+const mavenStatus = statusBar();
+const mavenBody = box('');
+
 function rulesPanel(): HTMLElement {
   const panel = box('');
-  panel.append(rulesBody);
+  panel.append(mavenBody, rulesBody);
   return panel;
 }
 
+/**
+ * Maven konumu kartı. Varsayılan davranış komutu olduğu gibi çalıştırmaktır (`mvn clean install`);
+ * bu alan yalnızca Maven PATH'te olmayan makineler için gerekir.
+ */
+function renderMaven(maven: MavenView): void {
+  mavenBody.replaceChildren();
+  mavenPath.value = maven.path;
+
+  const card = box('card');
+  const head = box('card-head');
+  head.append(box('grow', el('h2', {}, [icon('play'), document.createTextNode('Maven Konumu')])));
+  card.append(
+    head,
+    text(
+      'card-note',
+      'İsteğe bağlıdır. Boş bırakılırsa kural setindeki derleme komutu olduğu gibi çalışır ve ' +
+        'mvn PATH üzerinden bulunur. Maven PATH’te değilse kurulum dizinini ya da mvn dosyasını verin.'
+    ),
+    field('Maven kökü, bin dizini veya mvn dosyası', mavenPath, {
+      id: 'f-maven-path',
+      hint: 'Örn. C:\\apache-maven-3.9.6  ·  C:\\apache-maven-3.9.6\\bin\\mvn.cmd  ·  /opt/maven/bin/mvn'
+    }),
+    box(
+      'actions',
+      button('secondary', 'Konum Seç…', () => vscode.postMessage({ type: 'browseMavenPath' }), {
+        icon: 'folder'
+      }),
+      button('primary', 'Kaydet', () => vscode.postMessage({ type: 'saveMavenPath', value: mavenPath.value }), {
+        icon: 'check'
+      })
+    ),
+    mavenStatus.node
+  );
+  mavenBody.append(card);
+  mavenStatus.set(maven.ok ? (maven.path ? 'ok' : 'info') : 'danger', maven.detail);
+}
+
 function renderRules(rules: RulesView): void {
+  renderMaven(rules.maven);
   rulesBody.replaceChildren();
 
   const card = box('card');
@@ -423,6 +479,7 @@ window.addEventListener('message', (event: MessageEvent<ConfigToWebview>) => {
       projectKey.value = msg.sonar.projectKey;
       branch.value = msg.sonar.branch;
       authScheme.value = msg.sonar.authScheme;
+      projectRoot.value = msg.sonar.projectRoot;
       if (msg.hasSonarToken) {
         sonarToken.placeholder = '•••••••• (kayıtlı — değiştirmek için yeni token girin)';
       }
@@ -445,6 +502,13 @@ window.addEventListener('message', (event: MessageEvent<ConfigToWebview>) => {
     }
     case 'rules':
       renderRules(msg.rules);
+      break;
+    case 'projectRoot':
+      projectRoot.value = msg.value;
+      sonarStatus.set('info', 'Klasör seçildi. Kalıcı olması için Kaydet’e basın.');
+      break;
+    case 'maven':
+      renderMaven(msg.maven);
       break;
     case 'busy':
       setBusy(msg.target, msg.busy);

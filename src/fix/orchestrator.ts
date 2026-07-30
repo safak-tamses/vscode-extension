@@ -39,7 +39,7 @@ export class FixOrchestrator {
       cancel
     );
     const parsed = parseFixResponse(raw);
-    const filePath = componentToPath(issue.component);
+    const filePath = componentToPath(issue.component, issue.project);
 
     await this.audit.record({
       type: 'suggestion',

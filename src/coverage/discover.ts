@@ -7,7 +7,7 @@ import type { ModuleReport } from './gaps';
 import type { TestRuleSet } from './rules';
 
 /** Kaynak/test taramasında atlanacak dizinler (raporlar hariç — onlar `target` içindedir). */
-const SOURCE_EXCLUDE = '**/{node_modules,build,out,dist,.git,.idea,target}/**';
+export const SOURCE_EXCLUDE = '**/{node_modules,build,out,dist,.git,.idea,target}/**';
 
 export interface DiscoveryProblem {
   path: string;

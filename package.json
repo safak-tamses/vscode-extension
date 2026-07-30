@@ -177,6 +177,11 @@
           "default": "",
           "description": "Taranacak branch (boşsa ana branch)."
         },
+        "codeHealth.projectRoot": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "SonarQube bulgularındaki dosya yollarının göreli olduğu proje kök dizini. Monorepo alt klasörü için workspace'e göreli yol (`backend`), workspace dışındaki bir proje için mutlak yol (`/Users/ben/projeler/backend`) verin. Boşsa açık workspace klasörleri kullanılır."
+        },
         "codeHealth.authScheme": {
           "type": "string",
           "enum": [
@@ -205,6 +210,11 @@
           "type": "string",
           "default": ".code-health/rules",
           "markdownDescription": "Birim test kural setlerinin arandığı, workspace köküne göreli dizin. Bu dizindeki `*.md` dosyaları okunur."
+        },
+        "codeHealth.mavenPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "İsteğe bağlı Maven konumu. Boşsa kural setindeki derleme komutu olduğu gibi çalışır ve `mvn` PATH üzerinden bulunur. Maven PATH'te değilse Maven kökünü (`C:\\apache-maven-3.9.6`), `bin` dizinini ya da doğrudan çalıştırılabilir dosyayı (`C:\\apache-maven-3.9.6\\bin\\mvn.cmd`) verin; komutun başındaki `mvn` bu yolla değiştirilir."
         },
         "codeHealth.llm.provider": {
           "type": "string",

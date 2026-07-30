@@ -16,6 +16,7 @@ export type IconName =
   | 'copilot'
   | 'server'
   | 'file'
+  | 'folder'
   | 'newFile'
   | 'refresh'
   | 'play'
@@ -40,6 +41,7 @@ const PATHS: Record<IconName, string> = {
   server:
     'M2.5 2.5h11v4h-11z M2.5 9.5h11v4h-11z M4.6 4.5h.1 M4.6 11.5h.1 M7 4.5h4 M7 11.5h4',
   file: 'M4 1.5h5l3 3v11H4z M9 1.5v3h3',
+  folder: 'M1.5 3.5h4.2l1.6 2h7.2v7.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-9.5Z',
   newFile: 'M3.5 1.5h5l3 3v5 M8.5 1.5v3h3 M3.5 1.5v13h4 M11.5 11v4 M9.5 13h4',
   refresh: 'M13.5 8a5.5 5.5 0 1 1-1.9-4.2 M13.5 2v3.5H10',
   play: 'M4.5 2.5 13 8l-8.5 5.5z',

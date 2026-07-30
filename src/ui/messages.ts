@@ -19,6 +19,8 @@ export interface SonarFormState {
   projectKey: string;
   branch: string;
   authScheme: 'bearer' | 'basic';
+  /** Bulgu yollarının göreli olduğu proje kökü: mutlak ya da workspace'e göreli. Boş olabilir. */
+  projectRoot: string;
 }
 
 /** Model sağlayıcı formu (API anahtarı hariç — o ayrı, gizli). */
@@ -51,11 +53,22 @@ export interface RuleFileView {
   summary?: string;
 }
 
+/** Maven konumu ayarının durumu (Test Kuralları sekmesi). */
+export interface MavenView {
+  /** Ayardaki ham değer; boşsa PATH kullanılır. */
+  path: string;
+  /** Ayar boş ya da geçerli bir çalıştırılabilire çözülüyor mu? */
+  ok: boolean;
+  /** Kullanıcıya gösterilecek açıklama (çözülen dosya yolu ya da hata). */
+  detail: string;
+}
+
 export interface RulesView {
   /** Kural dizininin workspace'e göreli yolu. */
   dir: string;
   files: RuleFileView[];
   activeCount: number;
+  maven: MavenView;
 }
 
 export type ConfigTarget = 'sonar' | 'llm' | 'rules';
@@ -72,7 +85,11 @@ export type ConfigToWebview =
   | { type: 'rules'; rules: RulesView }
   | { type: 'testResult'; target: 'sonar' | 'llm'; ok: boolean; detail?: string }
   | { type: 'saved'; target: 'sonar' | 'llm' }
-  | { type: 'busy'; target: ConfigTarget; busy: boolean };
+  | { type: 'busy'; target: ConfigTarget; busy: boolean }
+  /** Klasör seçme diyalogundan dönen proje kökü. */
+  | { type: 'projectRoot'; value: string }
+  /** Maven konumu değişti (seçim ya da kaydetme sonrası). */
+  | { type: 'maven'; maven: MavenView };
 
 export type ConfigFromWebview =
   | { type: 'ready' }
@@ -81,6 +98,9 @@ export type ConfigFromWebview =
   | { type: 'testLlm'; form: LlmFormState; apiKey: string }
   | { type: 'saveLlm'; form: LlmFormState; apiKey: string }
   | { type: 'clearLlmKey' }
+  | { type: 'browseProjectRoot' }
+  | { type: 'browseMavenPath' }
+  | { type: 'saveMavenPath'; value: string }
   | { type: 'reloadRules' }
   | { type: 'createSampleRules' }
   | { type: 'openRuleFile'; path: string };

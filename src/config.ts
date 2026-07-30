@@ -12,12 +12,22 @@ export interface CodeHealthSettings {
   branch: string;
   authScheme: 'bearer' | 'basic';
   maxIssues: number;
+  /**
+   * Sonar/JaCoCo yollarının göreli olduğu proje kökü. Mutlak yol ya da workspace köküne
+   * göreli yol olabilir; boşsa workspace klasörleri kullanılır.
+   */
+  projectRoot: string;
 
   // --- Genel ---
   auditLogPath: string;
   snippetPadding: number;
   /** Test kural setlerinin arandığı, workspace'e göreli dizin. */
   rulesDir: string;
+  /**
+   * Maven kurulumunun yeri: Maven kökü, `bin` dizini ya da doğrudan çalıştırılabilir dosya.
+   * Boşsa derleme komutu olduğu gibi çalışır ve `mvn` PATH üzerinden bulunur.
+   */
+  mavenPath: string;
 
   // --- Model sağlayıcı ---
   llmProvider: LlmProviderId;

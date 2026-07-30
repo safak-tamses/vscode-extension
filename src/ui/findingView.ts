@@ -18,7 +18,7 @@ export function buildFindingView(
     issueType: issue.type,
     message: issue.message,
     descriptionHtml: sanitizeHtml(rawDesc),
-    filePath: componentToPath(issue.component),
+    filePath: componentToPath(issue.component, issue.project),
     line: issue.textRange?.startLine ?? issue.line,
     provider
   };

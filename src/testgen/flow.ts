@@ -21,7 +21,7 @@ export interface TestFlowDeps {
   audit: AuditSink;
   previewProvider: PreviewContentProvider;
   resolveUri: (relPath: string) => Promise<vscode.Uri | undefined>;
-  targetUri: (relPath: string) => vscode.Uri | undefined;
+  targetUri: (relPath: string) => Promise<vscode.Uri | undefined>;
   maxContextChars: () => number;
   maxRepairAttempts: () => number;
   /** Doğrulama adımı: derleme komutunu çalıştırıp kapsamı yeniden tarar. */
@@ -66,7 +66,8 @@ export async function runTestGeneration(
         const sources = await readSources(gap, deps);
         if (!sources) {
           void vscode.window.showErrorMessage(
-            `Kaynak dosya workspace içinde bulunamadı: ${gap.sourcePath}`
+            `Kaynak dosya bulunamadı: ${gap.sourcePath}. ` +
+              'Kurulum ekranındaki "Proje Kök Dizini" ayarını kontrol edin.'
           );
           return 'error';
         }

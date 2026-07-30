@@ -10,6 +10,7 @@ import type { OutputSink } from './audit/audit';
 import { SonarClient } from './sonar/client';
 import { componentToPath } from './sonar/types';
 import type { SonarIssue, SonarRule } from './sonar/types';
+import { baseName, isAbsolutePath, normalizeRelPath, pickBestSuffixMatch } from './sonar/locate';
 import { CopilotGateway } from './llm/copilotGateway';
 import { createLlmGateway } from './llm/factory';
 import { LlmUnavailableError } from './llm/gateway';
@@ -20,7 +21,9 @@ import { WorkspaceRuleFileSystem, createSampleRuleSet } from './coverage/vscodeR
 import { NodeBuildRunner } from './coverage/build';
 import { ensureBuildConsent } from './coverage/buildGate';
 import type { ConsentStore } from './coverage/buildGate';
-import { discoverCoverage, findBuildRoot } from './coverage/discover';
+import { SOURCE_EXCLUDE, discoverCoverage, findBuildRoot } from './coverage/discover';
+import { applyMavenPath, mavenExecutableCandidates, usesMaven } from './coverage/maven';
+import type { Platform } from './coverage/maven';
 import { describeReasons } from './coverage/gaps';
 import type { CoverageGap } from './coverage/gaps';
 import { formatBuilds, ruleSetFor, scanCoverage } from './coverage/service';
@@ -49,9 +52,11 @@ const SETTING_KEYS: { [K in keyof CodeHealthSettings]: string } = {
   branch: 'branch',
   authScheme: 'authScheme',
   maxIssues: 'maxIssues',
+  projectRoot: 'projectRoot',
   auditLogPath: 'auditLogPath',
   snippetPadding: 'snippetPadding',
   rulesDir: 'rulesDir',
+  mavenPath: 'mavenPath',
   llmProvider: 'llm.provider',
   copilotVendor: 'llm.copilotVendor',
   copilotFamily: 'llm.copilotFamily',
@@ -78,9 +83,11 @@ class VscodeSettingsStore implements SettingsStore {
       branch: c.get<string>(SETTING_KEYS.branch, ''),
       authScheme: c.get<'bearer' | 'basic'>(SETTING_KEYS.authScheme, 'bearer'),
       maxIssues: c.get<number>(SETTING_KEYS.maxIssues, 500),
+      projectRoot: c.get<string>(SETTING_KEYS.projectRoot, ''),
       auditLogPath: c.get<string>(SETTING_KEYS.auditLogPath, ''),
       snippetPadding: c.get<number>(SETTING_KEYS.snippetPadding, 8),
       rulesDir: c.get<string>(SETTING_KEYS.rulesDir, '.code-health/rules'),
+      mavenPath: c.get<string>(SETTING_KEYS.mavenPath, ''),
       llmProvider: c.get<'copilot' | 'local'>(SETTING_KEYS.llmProvider, 'copilot'),
       copilotVendor: c.get<string>(SETTING_KEYS.copilotVendor, '') || legacyVendor || 'copilot',
       copilotFamily: c.get<string>(SETTING_KEYS.copilotFamily, ''),
@@ -96,15 +103,26 @@ class VscodeSettingsStore implements SettingsStore {
     };
   }
 
+  /**
+   * Ayarlar global (kullanıcı) kapsamına yazılır: bağlantı/model kurulumu bir kez yapılır ve
+   * tüm workspace'lerde geçerli kalır. Bir anahtarın workspace kapsamında değeri varsa
+   * (eski sürümden kalan ya da bilinçli proje bazlı override) global değer görünmez kalacağı
+   * için aynı değer oraya da yazılır — mevcut girdiler silinmez, yalnızca eşitlenir.
+   */
   async write(partial: Partial<CodeHealthSettings>): Promise<void> {
     const c = vscode.workspace.getConfiguration('codeHealth');
-    const target = vscode.workspace.workspaceFolders
-      ? vscode.ConfigurationTarget.Workspace
-      : vscode.ConfigurationTarget.Global;
     for (const [field, value] of Object.entries(partial)) {
       const key = SETTING_KEYS[field as keyof CodeHealthSettings];
-      if (key) {
-        await c.update(key, value, target);
+      if (!key) {
+        continue;
+      }
+      await c.update(key, value, vscode.ConfigurationTarget.Global);
+      const scoped = c.inspect(key);
+      if (scoped?.workspaceValue !== undefined) {
+        await c.update(key, value, vscode.ConfigurationTarget.Workspace);
+      }
+      if (scoped?.workspaceFolderValue !== undefined) {
+        await c.update(key, value, vscode.ConfigurationTarget.WorkspaceFolder);
       }
     }
   }
@@ -173,9 +191,158 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const workspaceRoot = (): vscode.Uri | undefined => vscode.workspace.workspaceFolders?.[0]?.uri;
 
-  const workspaceFileUri = (relPath: string): vscode.Uri | undefined => {
+  // -------------------------------------------------------------- dosya konumu çözümlemesi
+
+  /**
+   * `codeHealth.projectRoot` ayarındaki proje kökü. Mutlak yol doğrudan, göreli yol workspace
+   * köküne göre yorumlanır. Ayar boşsa undefined (yalnızca workspace klasörleri kullanılır).
+   */
+  const projectRootUri = (): vscode.Uri | undefined => {
+    const configured = store.getSettings().projectRoot.trim();
+    if (configured === '') {
+      return undefined;
+    }
+    if (isAbsolutePath(configured)) {
+      return vscode.Uri.file(configured);
+    }
     const root = workspaceRoot();
-    return root ? vscode.Uri.joinPath(root, ...relPath.split('/').filter(Boolean)) : undefined;
+    return root ? vscode.Uri.joinPath(root, ...normalizeRelPath(configured)) : undefined;
+  };
+
+  /** Dosyanın aranacağı kökler, öncelik sırasıyla: ayardaki proje kökü, sonra workspace klasörleri. */
+  const searchRoots = (): vscode.Uri[] => {
+    const configured = projectRootUri();
+    const folders = (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri);
+    return configured ? [configured, ...folders] : folders;
+  };
+
+  /**
+   * Kök altında aranabilecek güvenli bir göreli yol mu? Mutlak yollar ve `..` içeren yollar
+   * kök dışına çıkabileceği için reddedilir (bkz. proje kuralları).
+   */
+  const safeSegments = (relPath: string): string[] | undefined => {
+    if (isAbsolutePath(relPath)) {
+      return undefined;
+    }
+    const segments = normalizeRelPath(relPath);
+    return segments.length > 0 && !segments.includes('..') ? segments : undefined;
+  };
+
+  const fileExists = async (uri: vscode.Uri): Promise<boolean> => {
+    try {
+      await vscode.workspace.fs.stat(uri);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** Yolun kaç üst dizini bu kökün altında gerçekten var? (kök seçimi için puan) */
+  const existingDepth = async (root: vscode.Uri, dirSegments: string[]): Promise<number> => {
+    let depth = 0;
+    for (let i = 1; i <= dirSegments.length; i += 1) {
+      if (!(await fileExists(vscode.Uri.joinPath(root, ...dirSegments.slice(0, i))))) {
+        break;
+      }
+      depth = i;
+    }
+    return depth;
+  };
+
+  /**
+   * Henüz var olmayan bir dosyanın (üretilen test dosyası) yazılacağı hedef. Kökler
+   * resolveFileUri ile aynı sırayla denenir ve üst dizin zinciri en derin var olan kök seçilir;
+   * böylece kök zaten yolun içinde geçiyorsa ön ek ikinci kez eklenmez. Hiçbirinde yoksa
+   * öncelik sırasındaki ilk kök kullanılır.
+   */
+  const workspaceFileUri = async (relPath: string): Promise<vscode.Uri | undefined> => {
+    const segments = safeSegments(relPath);
+    if (!segments) {
+      return undefined;
+    }
+    const dirSegments = segments.slice(0, -1);
+    let best: { uri: vscode.Uri; depth: number } | undefined;
+    for (const root of searchRoots()) {
+      const depth = await existingDepth(root, dirSegments);
+      if (!best || depth > best.depth) {
+        best = { uri: vscode.Uri.joinPath(root, ...segments), depth };
+      }
+    }
+    return best?.uri;
+  };
+
+  /**
+   * Göreli yolu gerçek dosyaya çözer. Sıra: yapılandırılmış proje kökü → workspace klasörleri →
+   * dosya adına göre workspace araması. Bulunamazsa undefined.
+   */
+  const resolveFileUri = async (relPath: string): Promise<vscode.Uri | undefined> => {
+    const segments = safeSegments(relPath);
+    if (!segments) {
+      return undefined;
+    }
+    for (const root of searchRoots()) {
+      const uri = vscode.Uri.joinPath(root, ...segments);
+      if (await fileExists(uri)) {
+        return uri;
+      }
+    }
+    return searchWorkspaceFor(relPath);
+  };
+
+  /**
+   * Son çare: dosya adıyla workspace'i tarar ve yolun sonundan en çok segment eşleşen adayı seçer.
+   * Aynı skorda birden çok aday varsa seçim belirsizdir; yanlış dosyayı açmaktansa vazgeçilir.
+   */
+  const searchWorkspaceFor = async (relPath: string): Promise<vscode.Uri | undefined> => {
+    const name = baseName(relPath);
+    if (name === '') {
+      return undefined;
+    }
+    const found = await vscode.workspace.findFiles(`**/${name}`, SOURCE_EXCLUDE, 50);
+    const best = pickBestSuffixMatch(
+      relPath,
+      found.map((uri) => uri.fsPath)
+    );
+    return best === undefined ? undefined : found.find((uri) => uri.fsPath === best);
+  };
+
+  /** Dosya bulunamadığında denenen kökleri gösterir ve kurulum ekranına yönlendirir. */
+  const reportMissingFile = async (relPath: string): Promise<void> => {
+    const roots = searchRoots().map((uri) => uri.fsPath);
+    const detail =
+      roots.length > 0
+        ? `Denenen kökler: ${roots.join(' · ')}`
+        : 'Açık bir workspace klasörü yok.';
+    const pick = await vscode.window.showWarningMessage(
+      `Dosya bulunamadı: ${relPath}. ${detail}`,
+      'Proje Kökünü Ayarla'
+    );
+    if (pick === 'Proje Kökünü Ayarla') {
+      openConfig();
+    }
+  };
+
+  /** Bulgunun dosyasını açıp ilgili satıra konumlanır. */
+  const revealIssueLocation = async (issue: SonarIssue): Promise<void> => {
+    const rel = componentToPath(issue.component, issue.project);
+    const uri = await resolveFileUri(rel);
+    if (!uri) {
+      await reportMissingFile(rel);
+      return;
+    }
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc, {
+        preview: true,
+        viewColumn: vscode.ViewColumn.One
+      });
+      const line = Math.max(0, (issue.textRange?.startLine ?? issue.line ?? 1) - 1);
+      const pos = new vscode.Position(line, 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    } catch {
+      void vscode.window.showWarningMessage(`Dosya açılamadı: ${rel}`);
+    }
   };
 
   /** Kural dizinini okur; workspace açık değilse boş sonuç döner. */
@@ -207,6 +374,46 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   let coverage: CoverageScanResult | undefined;
 
+  // ------------------------------------------------------------------------ Maven konumu
+
+  const platformKind = (): Platform => (process.platform === 'win32' ? 'win32' : 'posix');
+
+  /**
+   * Ayardaki Maven yolunu gerçek bir çalıştırılabilir dosyaya çözer. Dizin, `bin` dizini ve
+   * doğrudan dosya kabul edilir. Ayar boşsa ya da hiçbir aday yoksa undefined.
+   */
+  const resolveMavenExecutable = async (configured: string): Promise<string | undefined> => {
+    for (const candidate of mavenExecutableCandidates(configured, platformKind())) {
+      if (await fileExists(vscode.Uri.file(candidate))) {
+        return candidate;
+      }
+    }
+    return undefined;
+  };
+
+  /**
+   * Derleme komutunu çalıştırmaya hazır hale getirir: Maven yolu ayarlıysa komutun başındaki
+   * `mvn` belirteci tam yolla değiştirilir. Ayar boşsa komut olduğu gibi kalır ve `mvn`
+   * PATH üzerinden bulunur (varsayılan davranış).
+   */
+  const effectiveBuildCommand = async (command: string, warn = false): Promise<string> => {
+    const configured = store.getSettings().mavenPath.trim();
+    if (configured === '' || !usesMaven(command)) {
+      return command;
+    }
+    const executable = await resolveMavenExecutable(configured);
+    if (!executable) {
+      if (warn) {
+        void vscode.window.showWarningMessage(
+          `Maven konumu bulunamadı: ${configured}. Komut PATH üzerinden çalıştırılacak. ` +
+            'Kurulum ekranı › Test Kuralları sekmesinden yolu düzeltebilirsiniz.'
+        );
+      }
+      return command;
+    }
+    return applyMavenPath(command, executable, platformKind());
+  };
+
   const runBuildPort = async (
     ruleSet: TestRuleSet,
     cancel?: CancelSignal
@@ -215,7 +422,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!root) {
       return undefined;
     }
-    const command = ruleSet.coverage.buildCommand;
+    const command = await effectiveBuildCommand(ruleSet.coverage.buildCommand, true);
     const buildRoot = await findBuildRoot(root);
     const cwd = vscode.Uri.joinPath(root, ...buildRoot.split('/').filter(Boolean)).fsPath;
     const skipped = (reason: string): BuildRecord => ({
@@ -310,7 +517,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const relPath = which === 'source' ? gap.sourcePath : gap.testPath;
     const uri = await resolveFileUri(relPath);
     if (!uri) {
-      void vscode.window.showWarningMessage(`Dosya bulunamadı: ${relPath}`);
+      await reportMissingFile(relPath);
       return;
     }
     const doc = await vscode.workspace.openTextDocument(uri);
@@ -356,7 +563,9 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!(await ensureRules())) {
       return;
     }
-    const command = (await loadRules()).ruleSets[0]?.coverage.buildCommand ?? 'mvn clean install';
+    const command = await effectiveBuildCommand(
+      (await loadRules()).ruleSets[0]?.coverage.buildCommand ?? 'mvn clean install'
+    );
 
     let shouldBuild = build;
     if (shouldBuild === undefined) {
@@ -581,7 +790,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   const assembleContext = async (issue: SonarIssue): Promise<FixContext | undefined> => {
-    const uri = await resolveFileUri(componentToPath(issue.component));
+    const uri = await resolveFileUri(componentToPath(issue.component, issue.project));
     if (!uri) {
       return undefined;
     }
@@ -601,7 +810,7 @@ export function activate(context: vscode.ExtensionContext): void {
       type: 'rescan',
       ruleKey: issue.rule,
       issueKey: issue.key,
-      file: componentToPath(issue.component)
+      file: componentToPath(issue.component, issue.project)
     });
     let stillOpen = true;
     try {
@@ -625,7 +834,11 @@ export function activate(context: vscode.ExtensionContext): void {
       const ctx = await assembleContext(issue);
       if (!ctx) {
         DetailPanel.postBusy(false);
-        DetailPanel.postOutcome('error', 'İlgili dosya workspace içinde bulunamadı.');
+        DetailPanel.postOutcome(
+          'error',
+          'İlgili dosya bulunamadı. Kurulum ekranındaki "Proje Kök Dizini" ayarını kontrol edin.'
+        );
+        await reportMissingFile(componentToPath(issue.component, issue.project));
         return;
       }
       const orchestrator = new FixOrchestrator(llm(), audit);
@@ -864,38 +1077,3 @@ function extractGap(node: unknown): CoverageGap | undefined {
   return undefined;
 }
 
-async function resolveFileUri(relPath: string): Promise<vscode.Uri | undefined> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  for (const folder of folders) {
-    const uri = vscode.Uri.joinPath(folder.uri, relPath);
-    try {
-      await vscode.workspace.fs.stat(uri);
-      return uri;
-    } catch {
-      // bir sonraki klasörde dene
-    }
-  }
-  return undefined;
-}
-
-async function revealIssueLocation(issue: SonarIssue): Promise<void> {
-  const rel = componentToPath(issue.component);
-  const uri = await resolveFileUri(rel);
-  if (!uri) {
-    void vscode.window.showWarningMessage(`Dosya workspace içinde bulunamadı: ${rel}`);
-    return;
-  }
-  try {
-    const doc = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(doc, {
-      preview: true,
-      viewColumn: vscode.ViewColumn.One
-    });
-    const line = Math.max(0, (issue.textRange?.startLine ?? issue.line ?? 1) - 1);
-    const pos = new vscode.Position(line, 0);
-    editor.selection = new vscode.Selection(pos, pos);
-    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
-  } catch {
-    void vscode.window.showWarningMessage(`Dosya açılamadı: ${rel}`);
-  }
-}

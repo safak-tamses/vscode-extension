@@ -50,7 +50,9 @@ export async function previewAndDecide(proposal: FixProposal, deps: PreviewDeps)
 
   const uri = await deps.resolveUri(proposal.filePath);
   if (!uri) {
-    void vscode.window.showWarningMessage(`Dosya workspace içinde bulunamadı: ${proposal.filePath}`);
+    void vscode.window.showWarningMessage(
+      `Dosya bulunamadı: ${proposal.filePath}. Kurulum ekranındaki "Proje Kök Dizini" ayarını kontrol edin.`
+    );
     return 'error';
   }
 
@@ -112,7 +114,7 @@ export interface FilePreviewDeps {
   /** Dosya varsa Uri'sini döndürür, yoksa undefined. */
   resolveUri: (relPath: string) => Promise<vscode.Uri | undefined>;
   /** Dosya yokken yazılacak hedef Uri'yi üretir. */
-  targetUri: (relPath: string) => vscode.Uri | undefined;
+  targetUri: (relPath: string) => Promise<vscode.Uri | undefined>;
   provider: PreviewContentProvider;
   onAccept: () => Promise<void>;
   onReject: () => Promise<void>;
@@ -158,7 +160,7 @@ export async function previewFileAndDecide(
     return 'rejected';
   }
 
-  const target = existing ?? deps.targetUri(proposal.filePath);
+  const target = existing ?? (await deps.targetUri(proposal.filePath));
   if (!target) {
     void vscode.window.showErrorMessage(`Hedef yol çözümlenemedi: ${proposal.filePath}`);
     return 'error';
